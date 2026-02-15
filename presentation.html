@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OTT Streaming CBC Analysis, Group X</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:#141414; color:#fff; font-family:'Inter',sans-serif; }
+
+/* ===== SLIDE SYSTEM ===== */
+.slide { position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; opacity:0; pointer-events:none; transition: opacity 0.7s ease, transform 0.7s ease; transform: scale(0.97); padding: 60px 80px; }
+.slide.active { opacity:1; pointer-events:auto; transform:scale(1); z-index:10; }
+
+/* ===== NAVIGATION ===== */
+.nav-dots { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); display:flex; gap:8px; z-index:100; opacity:0; transition:opacity 0.4s; }
+.nav-dots.show { opacity:1; }
+.nav-dot { width:10px; height:10px; border-radius:50%; background:#555; cursor:pointer; transition:all 0.3s; border:none; }
+.nav-dot.active { background:#E50914; transform:scale(1.3); }
+.nav-dot:hover { background:#aaa; }
+.nav-arrows { position:fixed; top:50%; z-index:100; opacity:0; transition:opacity 0.4s; }
+.nav-arrows.show { opacity:1; }
+.nav-arrow { position:fixed; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:28px; width:50px; height:80px; cursor:pointer; z-index:100; transition:background 0.3s; display:flex; align-items:center; justify-content:center; border-radius:4px; }
+.nav-arrow:hover { background:rgba(229,9,20,0.7); }
+.nav-arrow.left { left:16px; }
+.nav-arrow.right { right:16px; }
+.slide-counter { position:fixed; bottom:24px; right:32px; font-size:13px; color:#666; z-index:100; font-family:'Inter',sans-serif; }
+
+/* ===== SLIDE 0: LOGIN ===== */
+#slide-0 { background: linear-gradient(180deg, #000 0%, #141414 50%, #000 100%); justify-content:center; }
+.login-logo { font-family:'Bebas Neue',sans-serif; font-size:clamp(40px,6vw,80px); color:#E50914; letter-spacing:8px; text-shadow: 0 0 40px rgba(229,9,20,0.5), 0 4px 20px rgba(0,0,0,0.8); line-height:1; margin-bottom:8px; animation: logoGlow 3s ease-in-out infinite alternate; }
+@keyframes logoGlow { 0%{text-shadow:0 0 40px rgba(229,9,20,0.3),0 4px 20px rgba(0,0,0,0.8)} 100%{text-shadow:0 0 80px rgba(229,9,20,0.6),0 4px 30px rgba(0,0,0,0.9)} }
+.login-subtitle { font-size:clamp(16px,2vw,24px); color:#B3B3B3; margin-bottom:48px; letter-spacing:2px; font-weight:300; text-align:center; }
+.login-btn { background:#E50914; color:#fff; border:none; padding:16px 48px; font-size:20px; font-family:'Inter',sans-serif; font-weight:600; border-radius:4px; cursor:pointer; transition:all 0.3s; display:flex; align-items:center; gap:12px; letter-spacing:1px; }
+.login-btn:hover { background:#f40612; transform:scale(1.05); box-shadow:0 0 30px rgba(229,9,20,0.5); }
+.login-btn svg { width:24px; height:24px; fill:#fff; }
+.login-footer { position:absolute; bottom:40px; color:#555; font-size:13px; }
+
+/* ===== SLIDE 1: PROFILES ===== */
+#slide-1 { background:#141414; }
+.profiles-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(36px,5vw,56px); margin-bottom:48px; letter-spacing:3px; color:#fff; }
+.profiles-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:24px; max-width:900px; }
+@media(max-width:800px){ .profiles-grid{grid-template-columns:repeat(3,1fr);} }
+.profile-card { text-align:center; cursor:pointer; transition:all 0.3s ease; }
+.profile-card:hover { transform:scale(1.1); }
+.profile-card:hover .profile-avatar { border:3px solid #fff; }
+.profile-avatar { width:clamp(80px,10vw,120px); height:clamp(80px,10vw,120px); border-radius:8px; margin:0 auto 12px; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:clamp(28px,4vw,40px); color:#fff; border:3px solid transparent; transition:border 0.3s; }
+.profile-name { font-size:clamp(12px,1.4vw,15px); color:#B3B3B3; font-weight:400; transition:color 0.3s; }
+.profile-card:hover .profile-name { color:#fff; }
+.profiles-group { margin-top:24px; color:#555; font-size:14px; letter-spacing:1px; }
+
+/* ===== CONTENT SLIDES ===== */
+.section-header { font-family:'Bebas Neue',sans-serif; font-size:clamp(14px,1.4vw,18px); color:#E50914; letter-spacing:3px; margin-bottom:8px; text-transform:uppercase; }
+.slide-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(32px,4.5vw,64px); letter-spacing:2px; line-height:1.1; margin-bottom:24px; }
+.slide-text { font-size:clamp(14px,1.3vw,18px); color:#B3B3B3; line-height:1.6; max-width:900px; text-align:center; }
+.slide-text strong { color:#fff; }
+
+/* Cards */
+.card-grid { display:grid; gap:20px; width:100%; max-width:1100px; }
+.card { background:#1a1a1a; border-radius:8px; padding:24px; border-left:4px solid #E50914; transition:transform 0.3s, box-shadow 0.3s; }
+.card:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+.card-title { font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:1px; margin-bottom:8px; color:#E50914; }
+.card-body { font-size:15px; color:#B3B3B3; line-height:1.5; }
+
+/* KPI */
+.kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; max-width:900px; width:100%; }
+.kpi-card { background:linear-gradient(135deg,#1a1a1a 0%,#222 100%); border-radius:12px; padding:32px 24px; text-align:center; border-top:4px solid #E50914; }
+.kpi-value { font-family:'Bebas Neue',sans-serif; font-size:clamp(40px,5vw,64px); color:#E50914; line-height:1; }
+.kpi-label { font-size:14px; color:#808080; margin-top:8px; letter-spacing:1px; text-transform:uppercase; }
+.kpi-benchmark { font-size:12px; color:#555; margin-top:4px; }
+
+/* Chart containers */
+.chart-container { width:100%; max-width:1000px; position:relative; }
+.chart-row { display:grid; grid-template-columns:1fr 1fr; gap:24px; width:100%; max-width:1100px; }
+
+/* Attribute table */
+.attr-table { border-collapse:collapse; width:100%; max-width:1000px; }
+.attr-table th { background:#E50914; color:#fff; padding:12px 16px; text-align:left; font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:1px; }
+.attr-table td { padding:10px 16px; border-bottom:1px solid #333; font-size:14px; color:#ccc; }
+.attr-table tr:hover td { background:#1e1e1e; }
+.attr-table .attr-name { color:#E50914; font-weight:600; font-size:15px; }
+
+/* Choice task mock */
+.choice-task { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; width:100%; max-width:1000px; }
+.choice-option { background:#1a1a1a; border-radius:8px; padding:20px 16px; text-align:center; border:2px solid #333; transition:all 0.3s; }
+.choice-option:hover { border-color:#E50914; transform:translateY(-4px); }
+.choice-option.none-opt { border-style:dashed; }
+.choice-option h3 { font-family:'Bebas Neue',sans-serif; font-size:22px; margin-bottom:12px; color:#E50914; }
+.choice-option .attr-val { font-size:13px; color:#B3B3B3; padding:6px 0; border-bottom:1px solid #2a2a2a; }
+.choice-option .price-tag { font-size:24px; font-weight:700; color:#fff; margin-top:12px; }
+.choice-btn { margin-top:12px; background:#333; color:#fff; border:none; padding:8px 20px; border-radius:4px; font-size:13px; cursor:default; }
+
+/* Simulation products */
+.sim-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; width:100%; max-width:1100px; }
+.sim-card { background:#1a1a1a; border-radius:8px; padding:20px; text-align:center; border-top:3px solid #E50914; position:relative; }
+.sim-card .sim-name { font-family:'Bebas Neue',sans-serif; font-size:18px; margin-bottom:4px; }
+.sim-card .sim-share { font-family:'Bebas Neue',sans-serif; font-size:36px; color:#E50914; }
+.sim-card .sim-details { font-size:12px; color:#808080; margin-top:8px; line-height:1.5; }
+.sim-card.winner { border-color:#46D369; }
+.sim-card.winner .sim-share { color:#46D369; }
+.sim-badge { position:absolute; top:-12px; right:12px; background:#46D369; color:#000; font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; }
+
+/* Scenario comparison */
+.scenario-row { display:grid; grid-template-columns:1fr 60px 1fr; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #2a2a2a; max-width:700px; width:100%; }
+.scenario-name { font-size:15px; color:#ccc; text-align:right; }
+.scenario-arrow { text-align:center; color:#E50914; font-size:18px; }
+.scenario-vals { display:flex; gap:16px; font-size:15px; }
+.scenario-old { color:#666; text-decoration:line-through; }
+.scenario-new { color:#46D369; font-weight:600; }
+.scenario-delta { color:#E50914; font-size:13px; }
+
+/* Insight cards */
+.insight-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; max-width:1000px; width:100%; }
+.insight-card { background:linear-gradient(135deg,#1a1a1a,#222); border-radius:12px; padding:28px; border-left:4px solid #E50914; }
+.insight-card .num { font-family:'Bebas Neue',sans-serif; font-size:48px; color:#E50914; line-height:1; float:left; margin-right:16px; }
+.insight-card h3 { font-size:16px; font-weight:600; color:#fff; margin-bottom:6px; }
+.insight-card p { font-size:13px; color:#999; line-height:1.5; }
+
+/* Credits */
+.credits-container { text-align:center; }
+.credits-names { display:flex; flex-wrap:wrap; justify-content:center; gap:32px; margin:32px 0; }
+.credit-person { text-align:center; }
+.credit-person .credit-avatar { width:72px; height:72px; border-radius:50%; margin:0 auto 10px; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:24px; }
+.credit-person .credit-name { font-size:15px; color:#ccc; }
+.credits-course { color:#666; font-size:14px; margin-top:32px; line-height:1.8; }
+.credits-watching { font-family:'Bebas Neue',sans-serif; font-size:clamp(24px,3vw,40px); color:#E50914; letter-spacing:2px; margin-top:40px; }
+
+/* Limitations */
+.lim-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; max-width:900px; width:100%; }
+.lim-card { background:#1a1a1a; border-radius:8px; padding:24px; text-align:center; }
+.lim-card .lim-icon { font-size:36px; margin-bottom:12px; }
+.lim-card h3 { font-size:15px; font-weight:600; margin-bottom:6px; color:#ccc; }
+.lim-card p { font-size:13px; color:#808080; line-height:1.5; }
+
+/* Fade-in animation for elements */
+.fade-up { opacity:0; transform:translateY(30px); transition:opacity 0.6s ease, transform 0.6s ease; }
+.slide.active .fade-up { opacity:1; transform:translateY(0); }
+.slide.active .fade-up:nth-child(1){transition-delay:0.1s}
+.slide.active .fade-up:nth-child(2){transition-delay:0.2s}
+.slide.active .fade-up:nth-child(3){transition-delay:0.3s}
+.slide.active .fade-up:nth-child(4){transition-delay:0.4s}
+.slide.active .fade-up:nth-child(5){transition-delay:0.5s}
+.slide.active .fade-up:nth-child(6){transition-delay:0.6s}
+
+/* Demo stats row */
+.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; max-width:1000px; width:100%; margin-bottom:20px; }
+.stat-box { background:#1a1a1a; border-radius:8px; padding:16px; text-align:center; }
+.stat-box .stat-num { font-family:'Bebas Neue',sans-serif; font-size:36px; color:#E50914; }
+.stat-box .stat-label { font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px; }
+
+/* Two column layout */
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:32px; width:100%; max-width:1100px; align-items:start; }
+.two-col canvas { max-height:320px; }
+</style>
+</head>
+<body>
+
+<!-- ===== SLIDE 0: NETFLIX LOGIN ===== -->
+<div class="slide active" id="slide-0">
+  <div class="login-logo">Choice-Based Conjoint Analysis</div>
+  <div class="login-subtitle">Understanding Consumer Preferences in the Streaming Wars</div>
+  <button class="login-btn" onclick="playTaDumAndAdvance()">
+    <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+    BEGIN PRESENTATION
+  </button>
+  <div class="login-footer">Consumer Preference Modeling &bull; ESMT Berlin &bull; 2025</div>
+</div>
+
+<!-- ===== SLIDE 1: PROFILES ===== -->
+<div class="slide" id="slide-1">
+  <div class="profiles-title">Who's Watching?</div>
+  <div class="profiles-grid">
+    <div class="profile-card" onclick="goToSlide(2)">
+      <div class="profile-avatar" style="background:#E50914;">LP</div>
+      <div class="profile-name">Laura P&eacute;rez</div>
+    </div>
+    <div class="profile-card" onclick="goToSlide(2)">
+      <div class="profile-avatar" style="background:#0080FF;">LY</div>
+      <div class="profile-name">Likitha Yenuga</div>
+    </div>
+    <div class="profile-card" onclick="goToSlide(2)">
+      <div class="profile-avatar" style="background:#46D369;">IN</div>
+      <div class="profile-name">Ishika Narang</div>
+    </div>
+    <div class="profile-card" onclick="goToSlide(2)">
+      <div class="profile-avatar" style="background:#E87C03;">YF</div>
+      <div class="profile-name">Yu Hsun Fang</div>
+    </div>
+    <div class="profile-card" onclick="goToSlide(2)">
+      <div class="profile-avatar" style="background:#BF5AF2;">JP</div>
+      <div class="profile-name">Jonah Paige</div>
+    </div>
+    <div class="profile-card" onclick="goToSlide(2)">
+      <div class="profile-avatar" style="background:#FFB800;">SS</div>
+      <div class="profile-name">Santiago Sierra</div>
+    </div>
+  </div>
+  <div class="profiles-group">GROUP X</div>
+</div>
+
+<!-- ===== SLIDE 2: INTRO ===== -->
+<div class="slide" id="slide-2">
+  <div class="section-header fade-up">Introduction</div>
+  <div class="slide-title fade-up">The Streaming Wars</div>
+  <div class="slide-text fade-up" style="margin-bottom:32px;">
+    With <strong>1.8 billion+ paid streaming subscriptions</strong> worldwide and growing,
+    the OTT market is one of the most competitive consumer landscapes.
+    But what do consumers <strong>actually</strong> value? Price? Content? Ad-free viewing?
+  </div>
+  <div class="card-grid fade-up" style="grid-template-columns:repeat(3,1fr); max-width:900px;">
+    <div class="card">
+      <div class="card-title">The Question</div>
+      <div class="card-body">Which attributes drive streaming platform choice, and how much are consumers willing to pay for each feature?</div>
+    </div>
+    <div class="card">
+      <div class="card-title">The Method</div>
+      <div class="card-body">Choice-Based Conjoint (CBC) analysis, the gold standard for measuring consumer trade-offs and preferences.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">The Goal</div>
+      <div class="card-body">Actionable insights for OTT platform managers on pricing, features, and tier design to maximize market share.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 3: ATTRIBUTES ===== -->
+<div class="slide" id="slide-3">
+  <div class="section-header fade-up">Method</div>
+  <div class="slide-title fade-up">Study Design</div>
+  <table class="attr-table fade-up" style="margin-top:8px;">
+    <thead><tr><th>Attribute</th><th>Level 1</th><th>Level 2</th><th>Level 3</th><th>Level 4</th><th>Level 5</th></tr></thead>
+    <tbody>
+      <tr><td class="attr-name">Monthly Price</td><td>&euro;4.99</td><td>&euro;7.99</td><td>&euro;9.99</td><td>&euro;12.99</td><td>&euro;14.99</td></tr>
+      <tr><td class="attr-name">Ads</td><td>With Ads</td><td>Limited Ads</td><td>Ad-free</td><td colspan="2" style="color:#555;">—</td></tr>
+      <tr><td class="attr-name">Video Quality</td><td>HD (720p)</td><td>Full HD (1080p)</td><td>4K + HDR</td><td colspan="2" style="color:#555;">—</td></tr>
+      <tr><td class="attr-name">Simultaneous Streams</td><td>1 screen</td><td>2 screens</td><td>4 screens</td><td colspan="2" style="color:#555;">—</td></tr>
+      <tr><td class="attr-name">Content Type</td><td>Licensed Only</td><td>Originals & Licensed</td><td>Exclusive Originals</td><td colspan="2" style="color:#555;">—</td></tr>
+    </tbody>
+  </table>
+  <div class="slide-text fade-up" style="margin-top:20px;">
+    <strong>5 &times; 3 &times; 3 &times; 3 &times; 3 = 405</strong> possible profiles &bull;
+    <strong>10 choice tasks</strong> per respondent &bull;
+    <strong>3 alternatives + None</strong> per task &bull;
+    Random design via Discover
+  </div>
+</div>
+
+<!-- ===== SLIDE 4: CHOICE TASK EXAMPLE ===== -->
+<div class="slide" id="slide-4">
+  <div class="section-header fade-up">Method</div>
+  <div class="slide-title fade-up">Example Choice Task</div>
+  <div class="slide-text fade-up" style="margin-bottom:24px;">Respondents chose their preferred streaming option from three profiles, or opted out entirely.</div>
+  <div class="choice-task fade-up">
+    <div class="choice-option">
+      <h3>Option A</h3>
+      <div class="attr-val"><strong>Limited Ads</strong></div>
+      <div class="attr-val">Full HD (1080p)</div>
+      <div class="attr-val">2 screens</div>
+      <div class="attr-val">Originals & Licensed</div>
+      <div class="price-tag">&euro;7.99/mo</div>
+      <button class="choice-btn" style="background:#E50914;">Selected</button>
+    </div>
+    <div class="choice-option">
+      <h3>Option B</h3>
+      <div class="attr-val"><strong>Ad-free</strong></div>
+      <div class="attr-val">4K + HDR</div>
+      <div class="attr-val">4 screens</div>
+      <div class="attr-val">Exclusive Originals</div>
+      <div class="price-tag">&euro;12.99/mo</div>
+      <button class="choice-btn">Select</button>
+    </div>
+    <div class="choice-option">
+      <h3>Option C</h3>
+      <div class="attr-val"><strong>With Ads</strong></div>
+      <div class="attr-val">HD (720p)</div>
+      <div class="attr-val">1 screen</div>
+      <div class="attr-val">Licensed Only</div>
+      <div class="price-tag">&euro;4.99/mo</div>
+      <button class="choice-btn">Select</button>
+    </div>
+    <div class="choice-option none-opt">
+      <h3 style="color:#808080;">None</h3>
+      <div style="color:#666; font-size:14px; margin-top:24px;">I would not subscribe to any of these options</div>
+      <button class="choice-btn" style="margin-top:40px;">Select</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 5: DATA COLLECTION ===== -->
+<div class="slide" id="slide-5">
+  <div class="section-header fade-up">Method</div>
+  <div class="slide-title fade-up">Data Collection &amp; Quality</div>
+  <div class="stats-row fade-up">
+    <div class="stat-box"><div class="stat-num">106</div><div class="stat-label">Respondents</div></div>
+    <div class="stat-box"><div class="stat-num">5.1<span style="font-size:20px;">min</span></div><div class="stat-label">Median Time</div></div>
+    <div class="stat-box"><div class="stat-num">4</div><div class="stat-label">Removed</div></div>
+    <div class="stat-box"><div class="stat-num">101</div><div class="stat-label">Final Sample</div></div>
+  </div>
+  <div class="card-grid fade-up" style="grid-template-columns:1fr 1fr; max-width:900px;">
+    <div class="card">
+      <div class="card-title">Quality Screening</div>
+      <div class="card-body">
+        Respondents removed only if <strong>both</strong> speeder (&lt;3 min) <strong>AND</strong> straight-liner (&geq;8 same choice).<br><br>
+        <span style="color:#808080;">11 speeders identified &bull; 10 straight-liners &bull; 4 met both criteria</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Sample Sufficiency</div>
+      <div class="card-body">
+        Orme (2010) rule: N &times; t &times; a / c &geq; 500<br><br>
+        <strong style="color:#46D369;">101 &times; 10 &times; 3 / 5 = 606 &geq; 500 &#10003;</strong><br><br>
+        <span style="color:#808080;">Sample size is sufficient for reliable estimation.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 6: SAMPLE DEMOGRAPHICS ===== -->
+<div class="slide" id="slide-6">
+  <div class="section-header fade-up">Method</div>
+  <div class="slide-title fade-up">Sample Description</div>
+  <div class="two-col fade-up">
+    <div>
+      <div style="background:#1a1a1a; border-radius:8px; padding:16px; margin-bottom:20px; display:flex; align-items:center; gap:16px;">
+        <canvas id="chart-gender" width="120" height="120" style="max-width:120px; max-height:120px;"></canvas>
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;"><span style="width:12px;height:12px;border-radius:50%;background:#E50914;display:inline-block;"></span><span style="color:#ccc; font-size:14px;">Male: 52 (51%)</span></div>
+          <div style="display:flex; align-items:center; gap:8px;"><span style="width:12px;height:12px;border-radius:50%;background:#E87C03;display:inline-block;"></span><span style="color:#ccc; font-size:14px;">Female: 49 (49%)</span></div>
+        </div>
+      </div>
+      <div class="stats-row" style="grid-template-columns:1fr 1fr; margin-bottom:20px;">
+        <div class="stat-box"><div class="stat-num">24</div><div class="stat-label">Median Age</div></div>
+        <div class="stat-box"><div class="stat-num">19–69</div><div class="stat-label">Age Range</div></div>
+      </div>
+      <div style="background:#1a1a1a; border-radius:8px; padding:20px;">
+        <div style="font-size:13px; color:#808080; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Education</div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span style="color:#ccc;">Bachelor's</span><span style="color:#E50914; font-weight:600;">51 (50%)</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span style="color:#ccc;">Master's</span><span style="color:#E50914; font-weight:600;">48 (48%)</span>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span style="color:#ccc;">High school</span><span style="color:#E50914; font-weight:600;">2 (2%)</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <canvas id="chart-income" height="160"></canvas>
+      <canvas id="chart-employment" height="160" style="margin-top:16px;"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 7: OTT LANDSCAPE ===== -->
+<div class="slide" id="slide-7">
+  <div class="section-header fade-up">Method</div>
+  <div class="slide-title fade-up">OTT Usage Landscape</div>
+  <div class="two-col fade-up">
+    <div>
+      <canvas id="chart-platforms" height="240"></canvas>
+    </div>
+    <div>
+      <div style="background:#1a1a1a; border-radius:8px; padding:24px; margin-bottom:20px;">
+        <div style="font-size:13px; color:#808080; margin-bottom:16px; text-transform:uppercase; letter-spacing:1px;">Subscription Type</div>
+        <div style="margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="color:#ccc;">Family/Friend Account</span><span style="font-weight:600;">47 (47%)</span></div>
+          <div style="background:#333; border-radius:4px; height:8px;"><div style="background:#E50914; border-radius:4px; height:8px; width:47%;"></div></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="color:#ccc;">Self-Paying</span><span style="font-weight:600;">46 (46%)</span></div>
+          <div style="background:#333; border-radius:4px; height:8px;"><div style="background:#E87C03; border-radius:4px; height:8px; width:46%;"></div></div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="color:#ccc;">Non-Subscriber</span><span style="font-weight:600;">8 (8%)</span></div>
+          <div style="background:#333; border-radius:4px; height:8px;"><div style="background:#808080; border-radius:4px; height:8px; width:8%;"></div></div>
+        </div>
+      </div>
+      <div style="background:#1a1a1a; border-radius:8px; padding:20px;">
+        <div style="font-size:13px; color:#808080; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Choice Behavior</div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="color:#ccc;">None (Opt-out) Rate</span>
+          <span style="font-family:'Bebas Neue',sans-serif; font-size:32px; color:#E50914;">18.4%</span>
+        </div>
+        <div style="font-size:12px; color:#666; margin-top:4px;">Indicating moderate willingness to subscribe</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 8: VALIDATION ===== -->
+<div class="slide" id="slide-8">
+  <div class="section-header fade-up">Results</div>
+  <div class="slide-title fade-up">Model Validation</div>
+  <div class="slide-text fade-up" style="margin-bottom:32px;">
+    Predictive validity assessed on a <strong>holdout task</strong> not used in estimation. HB-MNL individual-level predictions.
+  </div>
+  <div class="kpi-grid fade-up">
+    <div class="kpi-card">
+      <div class="kpi-value">59.4%</div>
+      <div class="kpi-label">Hit Rate</div>
+      <div class="kpi-benchmark">vs. 25% chance</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">56.9%</div>
+      <div class="kpi-label">Mean Hit Probability</div>
+      <div class="kpi-benchmark">vs. 25% chance</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">6.2%</div>
+      <div class="kpi-label">Mean Absolute Error</div>
+      <div class="kpi-benchmark">0% = perfect</div>
+    </div>
+  </div>
+  <div class="fade-up" style="margin-top:28px; display:flex; gap:32px; align-items:center;">
+    <div style="background:#1a1a1a; border-radius:8px; padding:16px 24px; text-align:center;">
+      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px;">Mean RLH</div>
+      <div style="font-family:'Bebas Neue',sans-serif; font-size:32px; color:#E87C03;">0.638</div>
+    </div>
+    <div style="background:#1a1a1a; border-radius:8px; padding:16px 24px; text-align:center;">
+      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px;">Pct. Certainty</div>
+      <div style="font-family:'Bebas Neue',sans-serif; font-size:32px; color:#E87C03;">51.7%</div>
+    </div>
+    <div style="font-size:14px; color:#808080; max-width:400px;">
+      Model correctly predicts the chosen alternative <strong style="color:#fff;">59.4%</strong> of the time, <strong style="color:#46D369;">2.4&times; better than random guessing</strong>.
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 9: RAI ===== -->
+<div class="slide" id="slide-9">
+  <div class="section-header fade-up">Results</div>
+  <div class="slide-title fade-up">What Drives Choice?</div>
+  <div class="slide-text fade-up" style="margin-bottom:24px;">
+    Relative Attribute Importance (HB-MNL), computed at the individual level and then averaged.
+  </div>
+  <div class="chart-container fade-up" style="max-height:340px;">
+    <canvas id="chart-rai"></canvas>
+  </div>
+  <div class="fade-up" style="margin-top:20px; max-width:800px; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    <div class="card" style="padding:16px;">
+      <div class="card-body" style="font-size:13px;"><strong style="color:#E50914;">Price &amp; Ads dominate</strong>, together accounting for over 53% of choice variation. Consumers primarily trade off cost vs. ad-free experience.</div>
+    </div>
+    <div class="card" style="padding:16px;">
+      <div class="card-body" style="font-size:13px;"><strong style="color:#E50914;">High heterogeneity</strong>: large SDs indicate that not all consumers value the same things. HB captures this individual variation.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 10: PART-WORTHS ===== -->
+<div class="slide" id="slide-10">
+  <div class="section-header fade-up">Results</div>
+  <div class="slide-title fade-up">Part-Worth Utilities</div>
+  <div class="chart-row fade-up">
+    <div><canvas id="chart-pw-ads" height="200"></canvas></div>
+    <div><canvas id="chart-pw-quality" height="200"></canvas></div>
+  </div>
+  <div class="chart-row fade-up" style="margin-top:12px;">
+    <div><canvas id="chart-pw-streams" height="200"></canvas></div>
+    <div><canvas id="chart-pw-content" height="200"></canvas></div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 11: WTP ===== -->
+<div class="slide" id="slide-11">
+  <div class="section-header fade-up">Results</div>
+  <div class="slide-title fade-up">Willingness to Pay</div>
+  <div class="slide-text fade-up" style="margin-bottom:20px;">
+    How much extra would consumers pay monthly for each feature upgrade? (HB-MNL individual-level WTP)
+  </div>
+  <div class="chart-container fade-up" style="max-height:360px;">
+    <canvas id="chart-wtp"></canvas>
+  </div>
+</div>
+
+<!-- ===== SLIDE 12: MARKET SIMULATION ===== -->
+<div class="slide" id="slide-12" style="padding:40px 60px;">
+  <div class="section-header fade-up">Results</div>
+  <div class="slide-title fade-up" style="font-size:clamp(28px,4vw,52px);">Market Simulation</div>
+  <div class="sim-grid fade-up">
+    <div class="sim-card">
+      <div class="sim-name">Budget Basic</div>
+      <div style="font-size:11px; color:#808080;">&euro;4.99 &bull; With Ads &bull; HD &bull; 1 screen &bull; Licensed</div>
+      <div class="sim-share">8.1%</div>
+    </div>
+    <div class="sim-card">
+      <div class="sim-name">Mid-Tier Standard</div>
+      <div style="font-size:11px; color:#808080;">&euro;9.99 &bull; Limited Ads &bull; Full HD &bull; 2 screens &bull; Orig & Lic</div>
+      <div class="sim-share">13.9%</div>
+    </div>
+    <div class="sim-card">
+      <div class="sim-name">Premium All-In</div>
+      <div style="font-size:11px; color:#808080;">&euro;14.99 &bull; Ad-free &bull; 4K &bull; 4 screens &bull; Exclusive</div>
+      <div class="sim-share">16.8%</div>
+    </div>
+    <div class="sim-card">
+      <div class="sim-name">Ad-Supported Value</div>
+      <div style="font-size:11px; color:#808080;">&euro;7.99 &bull; With Ads &bull; Full HD &bull; 2 screens &bull; Orig & Lic</div>
+      <div class="sim-share">9.3%</div>
+    </div>
+    <div class="sim-card winner">
+      <div class="sim-badge">WINNER</div>
+      <div class="sim-name">Family Plan</div>
+      <div style="font-size:11px; color:#808080;">&euro;12.99 &bull; Ad-free &bull; Full HD &bull; 4 screens &bull; Orig & Lic</div>
+      <div class="sim-share">41.2%</div>
+    </div>
+    <div class="sim-card" style="border-top-color:#555;">
+      <div class="sim-name" style="color:#808080;">None (Opt-out)</div>
+      <div style="font-size:11px; color:#555;">Consumer chooses not to subscribe</div>
+      <div class="sim-share" style="color:#808080;">10.7%</div>
+    </div>
+  </div>
+  <div class="fade-up" style="margin-top:16px; max-width:800px;">
+    <div class="card" style="padding:16px;">
+      <div class="card-body" style="font-size:13px;">The <strong style="color:#46D369;">Family Plan dominates</strong> with 41.2% market share. Ad-free viewing with multi-screen access and broad content at a mid-high price point is the strongest value proposition.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 13: SCENARIOS ===== -->
+<div class="slide" id="slide-13">
+  <div class="section-header fade-up">Results</div>
+  <div class="slide-title fade-up">What If We Drop the Family Plan?</div>
+  <div class="slide-text fade-up" style="margin-bottom:28px;">
+    The Family Plan captures 41.2% of the market. If a competitor removes it, where does the demand go?
+  </div>
+  <div class="fade-up" style="max-width:700px; width:100%;">
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:2px solid #444; margin-bottom:8px;">
+      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px;">Product</div>
+      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">Before</div>
+      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">After</div>
+      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">Change</div>
+    </div>
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:1px solid #2a2a2a;">
+      <div style="color:#ccc;">Budget Basic</div>
+      <div style="text-align:center; color:#666;">8.1%</div>
+      <div style="text-align:center; color:#ccc;">9.1%</div>
+      <div style="text-align:center; color:#46D369;">+1.0%</div>
+    </div>
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:1px solid #2a2a2a;">
+      <div style="color:#ccc;">Mid-Tier Standard</div>
+      <div style="text-align:center; color:#666;">13.9%</div>
+      <div style="text-align:center; color:#ccc;">19.8%</div>
+      <div style="text-align:center; color:#46D369;">+5.9%</div>
+    </div>
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:1px solid #2a2a2a; background:rgba(70,211,105,0.05);">
+      <div style="color:#46D369; font-weight:600;">Premium All-In</div>
+      <div style="text-align:center; color:#666;">16.8%</div>
+      <div style="text-align:center; color:#46D369; font-weight:700; font-size:18px;">33.8%</div>
+      <div style="text-align:center; color:#46D369; font-weight:600;">+17.0%</div>
+    </div>
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:1px solid #2a2a2a;">
+      <div style="color:#ccc;">Ad-Supported Value</div>
+      <div style="text-align:center; color:#666;">9.3%</div>
+      <div style="text-align:center; color:#ccc;">13.5%</div>
+      <div style="text-align:center; color:#46D369;">+4.2%</div>
+    </div>
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:1px solid #2a2a2a; background:rgba(229,9,20,0.05);">
+      <div style="color:#808080; text-decoration:line-through;">Family Plan</div>
+      <div style="text-align:center; color:#666;">41.2%</div>
+      <div style="text-align:center; color:#E50914;">REMOVED</div>
+      <div style="text-align:center; color:#E50914;">&mdash;</div>
+    </div>
+    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0;">
+      <div style="color:#ccc;">None</div>
+      <div style="text-align:center; color:#666;">10.7%</div>
+      <div style="text-align:center; color:#E50914; font-weight:600;">23.7%</div>
+      <div style="text-align:center; color:#E50914;">+13.0%</div>
+    </div>
+  </div>
+  <div class="fade-up" style="margin-top:20px; max-width:700px;">
+    <div class="card" style="padding:16px;">
+      <div class="card-body" style="font-size:13px;"><strong style="color:#46D369;">Premium All-In doubles</strong> its share (16.8% &rarr; 33.8%), but <strong style="color:#E50914;">opt-out also doubles</strong> (10.7% &rarr; 23.7%). Without the Family Plan's ad-free multi-screen value, many consumers would rather not subscribe at all.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 14: MANAGERIAL IMPLICATIONS ===== -->
+<div class="slide" id="slide-14">
+  <div class="section-header fade-up">Discussion</div>
+  <div class="slide-title fade-up">Key Takeaways</div>
+  <div class="insight-grid fade-up">
+    <div class="insight-card">
+      <div class="num">1</div>
+      <h3>Tiered Pricing Is Essential</h3>
+      <p>Price is the #1 driver (27% RAI). Offer a clear tier ladder: budget, mid-tier, and premium options to capture different willingness-to-pay segments.</p>
+    </div>
+    <div class="insight-card">
+      <div class="num">2</div>
+      <h3>Invest in Ad-Free</h3>
+      <p>Ads importance matches price (27% RAI). Consumers pay a significant premium for ad-free viewing, with a WTP of +&euro;3.49/month for ad-free vs. ads.</p>
+    </div>
+    <div class="insight-card">
+      <div class="num">3</div>
+      <h3>Content Breadth Over Exclusivity</h3>
+      <p>"Originals & Licensed" content strongly preferred over both "Licensed Only" and "Exclusive Originals." Breadth wins over exclusivity.</p>
+    </div>
+    <div class="insight-card">
+      <div class="num">4</div>
+      <h3>The Family Plan Wins</h3>
+      <p>Ad-free + multi-screen + mixed content at &euro;12.99 captures 41% share, driven by shared household viewing.</p>
+    </div>
+    <div class="insight-card">
+      <div class="num">5</div>
+      <h3>Quality Is a Hygiene Factor</h3>
+      <p>Video quality ranks lowest (15% RAI). Full HD is sufficient for most, and 4K adds only marginal value. Resolution should not come at the expense of content.</p>
+    </div>
+    <div class="insight-card">
+      <div class="num">6</div>
+      <h3>Segment Your Strategy</h3>
+      <p>High heterogeneity (large SDs in RAI) means one-size-fits-all fails. Some consumers are purely price-driven; others prioritize ad-free or content.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 15: LIMITATIONS ===== -->
+<div class="slide" id="slide-15">
+  <div class="section-header fade-up">Discussion</div>
+  <div class="slide-title fade-up" style="margin-bottom:8px;">Coming Soon...</div>
+  <div class="slide-text fade-up" style="margin-bottom:32px;">Limitations of our study and directions for future research</div>
+  <div class="lim-grid fade-up">
+    <div class="lim-card">
+      <div class="lim-icon" style="color:#E50914;">&#9888;</div>
+      <h3>Convenience Sample</h3>
+      <p>Young, student-heavy sample (median age 24). Findings may not generalize to older demographics or other markets.</p>
+    </div>
+    <div class="lim-card">
+      <div class="lim-icon" style="color:#E87C03;">&#128173;</div>
+      <h3>Hypothetical Bias</h3>
+      <p>Stated preferences may differ from revealed (actual) purchase behavior — a known limitation of all conjoint methods.</p>
+    </div>
+    <div class="lim-card">
+      <div class="lim-icon" style="color:#0080FF;">&#127916;</div>
+      <h3>No Brand Effects</h3>
+      <p>Our unlabeled CBC design omits brand equity. Real choices are heavily influenced by Netflix, Disney+, etc. brand loyalty.</p>
+    </div>
+    <div class="lim-card">
+      <div class="lim-icon" style="color:#46D369;">&#128300;</div>
+      <h3>Future Research</h3>
+      <p>Labeled design with real brands, larger/diverse samples, revealed preference validation, and dynamic pricing experiments.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 16: CREDITS ===== -->
+<div class="slide" id="slide-16">
+  <div class="credits-container">
+    <div class="section-header fade-up">Thank You</div>
+    <div class="slide-title fade-up">Questions?</div>
+    <div class="credits-names fade-up">
+      <div class="credit-person"><div class="credit-avatar" style="background:#E50914;">LP</div><div class="credit-name">Laura P&eacute;rez</div></div>
+      <div class="credit-person"><div class="credit-avatar" style="background:#0080FF;">LY</div><div class="credit-name">Likitha Yenuga</div></div>
+      <div class="credit-person"><div class="credit-avatar" style="background:#46D369;">IN</div><div class="credit-name">Ishika Narang</div></div>
+      <div class="credit-person"><div class="credit-avatar" style="background:#E87C03;">YF</div><div class="credit-name">Yu Hsun Fang</div></div>
+      <div class="credit-person"><div class="credit-avatar" style="background:#BF5AF2;">JP</div><div class="credit-name">Jonah Paige</div></div>
+      <div class="credit-person"><div class="credit-avatar" style="background:#FFB800;">SS</div><div class="credit-name">Santiago Sierra</div></div>
+    </div>
+    <div class="credits-course fade-up">
+      Consumer Preference Modeling &bull; ESMT Berlin<br>
+      Professor's CBC Conjoint Analysis Group Assignment<br>
+      February 2025
+    </div>
+    <div class="credits-watching fade-up">Continue Watching...</div>
+  </div>
+</div>
+
+<!-- ===== NAVIGATION ===== -->
+<div class="nav-dots" id="navDots"></div>
+<button class="nav-arrow left" id="navLeft" onclick="prevSlide()">&#10094;</button>
+<button class="nav-arrow right" id="navRight" onclick="nextSlide()">&#10095;</button>
+<div class="slide-counter" id="slideCounter"></div>
+
+<script>
+// ===== SLIDE ENGINE =====
+const slides = document.querySelectorAll('.slide');
+const totalSlides = slides.length;
+let currentSlide = 0;
+let chartInstances = {};
+
+// Build nav dots
+const dotsContainer = document.getElementById('navDots');
+for (let i = 0; i < totalSlides; i++) {
+  const dot = document.createElement('button');
+  dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+  dot.onclick = () => goToSlide(i);
+  dotsContainer.appendChild(dot);
+}
+
+function updateNav() {
+  const dots = document.querySelectorAll('.nav-dot');
+  dots.forEach((d, i) => d.classList.toggle('active', i === currentSlide));
+  const showNav = currentSlide >= 2;
+  dotsContainer.classList.toggle('show', showNav);
+  document.getElementById('navLeft').style.opacity = showNav ? '1' : '0';
+  document.getElementById('navLeft').style.pointerEvents = showNav ? 'auto' : 'none';
+  document.getElementById('navRight').style.opacity = showNav ? '1' : '0';
+  document.getElementById('navRight').style.pointerEvents = showNav ? 'auto' : 'none';
+  document.getElementById('slideCounter').textContent = showNav ? `${currentSlide - 1} / ${totalSlides - 2}` : '';
+}
+
+function goToSlide(n) {
+  if (n < 0 || n >= totalSlides || n === currentSlide) return;
+  slides[currentSlide].classList.remove('active');
+  currentSlide = n;
+  slides[currentSlide].classList.add('active');
+  updateNav();
+  // Trigger chart creation
+  if (slideCharts[currentSlide]) slideCharts[currentSlide]();
+}
+
+function nextSlide() { goToSlide(currentSlide + 1); }
+function prevSlide() { goToSlide(currentSlide - 1); }
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); if (currentSlide === 0) { playTaDumAndAdvance(); } else { nextSlide(); } }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prevSlide(); }
+  else if (e.key === 'Home') { e.preventDefault(); goToSlide(0); }
+  else if (e.key === 'End') { e.preventDefault(); goToSlide(totalSlides - 1); }
+});
+
+updateNav();
+
+// ===== TA-DUM SOUND (MP3) =====
+const taDumAudio = new Audio('sounds/netflix.mp3');
+
+function playTaDumAndAdvance() {
+  taDumAudio.currentTime = 0;
+  taDumAudio.play();
+  setTimeout(() => goToSlide(1), 800);
+}
+
+// ===== CHART DEFAULTS =====
+Chart.defaults.color = '#B3B3B3';
+Chart.defaults.borderColor = '#333';
+Chart.defaults.font.family = "'Inter', sans-serif";
+
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+// ===== CHART FACTORIES =====
+const slideCharts = {};
+
+// Slide 6: Demographics
+slideCharts[6] = function() {
+  // Gender pie chart
+  if (!chartInstances['chart-gender']) {
+    chartInstances['chart-gender'] = new Chart(document.getElementById('chart-gender'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Male', 'Female'],
+        datasets: [{
+          data: [52, 49],
+          backgroundColor: ['#E50914','#E87C03'],
+          borderColor: '#1a1a1a',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: false,
+        cutout: '55%',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed + ' (' + Math.round(ctx.parsed/(52+49)*100) + '%)' } } }
+      }
+    });
+  }
+  // Income chart
+  if (!chartInstances['chart-income']) {
+    chartInstances['chart-income'] = new Chart(document.getElementById('chart-income'), {
+      type: 'bar',
+      data: {
+        labels: ['<\u20AC1,500', '\u20AC1.5-2.5k', '\u20AC2.5-3.5k', '\u20AC3.5-5k', '\u20AC5k+'],
+        datasets: [{
+          data: [61, 16, 13, 6, 5],
+          backgroundColor: ['#E50914','#B81D24','#E87C03','#FFB800','#808080'],
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false }, title: { display: true, text: 'Monthly Net Income', color: '#fff', font: { size: 14, family: "'Bebas Neue',sans-serif", weight: 'normal' }, padding: { bottom: 8 } } },
+        scales: { x: { grid: { color: '#2a2a2a' }, ticks: { color: '#888' } }, y: { grid: { display: false }, ticks: { color: '#ccc', font: { size: 11 } } } }
+      }
+    });
+  }
+  // Employment chart
+  if (!chartInstances['chart-employment']) {
+    chartInstances['chart-employment'] = new Chart(document.getElementById('chart-employment'), {
+      type: 'bar',
+      data: {
+        labels: ['Full-time', 'Student (FT)', 'Student (PT)', 'Unemployed', 'Other', 'Self-empl.', 'Retired'],
+        datasets: [{
+          data: [44, 37, 8, 6, 3, 2, 1],
+          backgroundColor: '#E50914',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false }, title: { display: true, text: 'Employment Status', color: '#fff', font: { size: 14, family: "'Bebas Neue',sans-serif", weight: 'normal' }, padding: { bottom: 8 } } },
+        scales: { x: { grid: { color: '#2a2a2a' }, ticks: { color: '#888' } }, y: { grid: { display: false }, ticks: { color: '#ccc', font: { size: 11 } } } }
+      }
+    });
+  }
+};
+
+// Slide 7: Platforms
+slideCharts[7] = function() {
+  if (!chartInstances['chart-platforms']) {
+    chartInstances['chart-platforms'] = new Chart(document.getElementById('chart-platforms'), {
+      type: 'bar',
+      data: {
+        labels: ['Netflix', 'Amazon Prime', 'Disney+', 'HBO Max', 'Apple TV+'],
+        datasets: [{
+          data: [88, 60, 55, 26, 15],
+          backgroundColor: ['#E50914','#00A8E1','#113CCF','#A17DC9','#555'],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'Platform Usage (out of 101)', color: '#fff', font: { size: 16, family: "'Bebas Neue',sans-serif", weight: 'normal' } }
+        },
+        scales: {
+          x: { grid: { color: '#2a2a2a' }, ticks: { color: '#888' }, max: 100 },
+          y: { grid: { display: false }, ticks: { color: '#ccc', font: { size: 13 } } }
+        }
+      }
+    });
+  }
+};
+
+// Slide 9: RAI
+slideCharts[9] = function() {
+  if (!chartInstances['chart-rai']) {
+    const ctx = document.getElementById('chart-rai');
+    chartInstances['chart-rai'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Price', 'Ads', 'Content Type', 'Sim. Streams', 'Video Quality'],
+        datasets: [
+          {
+            label: 'Mean RAI (%)',
+            data: [26.9, 26.7, 16.1, 15.5, 14.7],
+            backgroundColor: ['#E50914','#E50914','#E87C03','#E87C03','#E87C03'],
+            borderRadius: 6,
+            barPercentage: 0.7
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              afterLabel: function(ctx) {
+                const sds = [17.5, 14.6, 10.0, 8.7, 10.1];
+                return 'SD: \u00B1' + sds[ctx.dataIndex] + '%';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: '#2a2a2a' }, ticks: { color: '#888', callback: v => v + '%' }, max: 50 },
+          y: { grid: { display: false }, ticks: { color: '#fff', font: { size: 15, weight: 'bold' } } }
+        }
+      }
+    });
+  }
+};
+
+// Slide 10: Part-worths (4 small charts)
+slideCharts[10] = function() {
+  const pwConfig = (id, title, labels, data, colors) => {
+    if (chartInstances[id]) return;
+    chartInstances[id] = new Chart(document.getElementById(id), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: data.map(v => v >= 0 ? colors[0] : colors[1]),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: { legend: { display: false }, title: { display: true, text: title, color: '#fff', font: { size: 14, family: "'Bebas Neue',sans-serif" } } },
+        scales: {
+          x: { grid: { color: '#2a2a2a' }, ticks: { color: '#888' } },
+          y: { grid: { display: false }, ticks: { color: '#ccc', font: { size: 12 } } }
+        }
+      }
+    });
+  };
+
+  pwConfig('chart-pw-ads', 'Ads', ['With Ads', 'Limited Ads', 'Ad-free'], [-2.55, 0.27, 2.29], ['#E50914','#555']);
+  pwConfig('chart-pw-quality', 'Video Quality', ['HD 720p', 'Full HD 1080p', '4K + HDR'], [-1.11, 0.29, 0.83], ['#0080FF','#555']);
+  pwConfig('chart-pw-streams', 'Simultaneous Streams', ['1 screen', '2 screens', '4 screens'], [-1.08, -0.01, 1.09], ['#46D369','#555']);
+  pwConfig('chart-pw-content', 'Content Type', ['Licensed Only', 'Orig & Licensed', 'Exclusive Orig.'], [-0.32, 1.14, -0.82], ['#E87C03','#555']);
+};
+
+// Slide 11: WTP
+slideCharts[11] = function() {
+  if (chartInstances['chart-wtp']) return;
+  const labels = [
+    'Ad-free', '4 screens', '4K + HDR', 'Orig & Licensed',
+    'Full HD 1080p', 'Limited Ads', '2 screens',
+    'Licensed Only', 'Exclusive Orig.', 'HD 720p', '1 screen', 'With Ads'
+  ];
+  const data = [3.49, 3.08, 1.12, 1.12, 0.45, 0.28, -0.36, -0.38, -0.97, -1.57, -2.69, -3.58];
+  const colors = data.map(v => v >= 0 ? '#46D369' : '#E50914');
+
+  chartInstances['chart-wtp'] = new Chart(document.getElementById('chart-wtp'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: colors,
+        borderRadius: 4,
+        barPercentage: 0.7
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => '\u20AC' + ctx.parsed.x.toFixed(2) + '/month' } }
+      },
+      scales: {
+        x: { grid: { color: '#2a2a2a' }, ticks: { color: '#888', callback: v => '\u20AC' + v } },
+        y: { grid: { display: false }, ticks: { color: '#ccc', font: { size: 12 } } }
+      }
+    }
+  });
+};
+
+// ===== INIT =====
+updateNav();
+</script>
+</body>
+</html>
