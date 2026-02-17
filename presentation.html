@@ -46,8 +46,8 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
 @media(max-width:800px){ .profiles-grid{grid-template-columns:repeat(3,1fr);} }
 .profile-card { text-align:center; cursor:pointer; transition:all 0.3s ease; }
 .profile-card:hover { transform:scale(1.1); }
-.profile-card:hover .profile-avatar { border:3px solid #fff; }
-.profile-avatar { width:clamp(80px,10vw,120px); height:clamp(80px,10vw,120px); border-radius:8px; margin:0 auto 12px; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:clamp(28px,4vw,40px); color:#fff; border:3px solid transparent; transition:border 0.3s; }
+.profile-card:hover .profile-avatar { outline:3px solid #fff; outline-offset:0px; }
+.profile-avatar { width:clamp(80px,10vw,120px); height:clamp(80px,10vw,120px); border-radius:8px; margin:0 auto 12px; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:clamp(28px,4vw,40px); color:#fff; overflow:hidden; transition:outline 0.3s; }
 .profile-name { font-size:clamp(12px,1.4vw,15px); color:#B3B3B3; font-weight:400; transition:color 0.3s; }
 .profile-card:hover .profile-name { color:#fff; }
 .profiles-group { margin-top:24px; color:#555; font-size:14px; letter-spacing:1px; }
@@ -174,27 +174,27 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   <div class="profiles-title">Who's Watching?</div>
   <div class="profiles-grid">
     <div class="profile-card" onclick="goToSlide(2)">
-      <div class="profile-avatar" style="background:#E50914;">LP</div>
+      <div class="profile-avatar" style="background:url('images/laura.jpeg') center/cover;"></div>
       <div class="profile-name">Laura P&eacute;rez</div>
     </div>
     <div class="profile-card" onclick="goToSlide(2)">
-      <div class="profile-avatar" style="background:#0080FF;">LY</div>
+      <div class="profile-avatar" style="background:url('images/likitha.jpeg') center/cover;"></div>
       <div class="profile-name">Likitha Yenuga</div>
     </div>
     <div class="profile-card" onclick="goToSlide(2)">
-      <div class="profile-avatar" style="background:#46D369;">IN</div>
+      <div class="profile-avatar" style="background:url('images/ishika.jpeg') center/cover;"></div>
       <div class="profile-name">Ishika Narang</div>
     </div>
     <div class="profile-card" onclick="goToSlide(2)">
-      <div class="profile-avatar" style="background:#E87C03;">YF</div>
+      <div class="profile-avatar" style="background:url('images/trini.jpeg') center/cover;"></div>
       <div class="profile-name">Yu Hsun Fang</div>
     </div>
     <div class="profile-card" onclick="goToSlide(2)">
-      <div class="profile-avatar" style="background:#BF5AF2;">JP</div>
+      <div class="profile-avatar" style="background:url('images/jonah1.jpg') center/cover;"></div>
       <div class="profile-name">Jonah Paige</div>
     </div>
     <div class="profile-card" onclick="goToSlide(2)">
-      <div class="profile-avatar" style="background:#FFB800;">SS</div>
+      <div class="profile-avatar" style="background:url('images/santi.jpg') center/cover;"></div>
       <div class="profile-name">Santiago Sierra</div>
     </div>
   </div>
@@ -660,10 +660,12 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
     </div>
     <div class="credits-course fade-up">
       Consumer Preference Modeling &bull; ESMT Berlin<br>
-      Professor's CBC Conjoint Analysis Group Assignment<br>
       February 2025
     </div>
     <div class="credits-watching fade-up">Continue Watching...</div>
+    <div class="fade-up" id="spotify-wrapper" style="margin-top:24px; max-width:400px; margin-left:auto; margin-right:auto; display:none;">
+      <iframe id="spotify-embed" style="border-radius:12px;" src="" width="100%" height="152" frameBorder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+    </div>
   </div>
 </div>
 
@@ -709,6 +711,8 @@ function goToSlide(n) {
   updateNav();
   // Trigger chart creation
   if (slideCharts[currentSlide]) slideCharts[currentSlide]();
+  // Spotify on last slide
+  handleSpotify(currentSlide === totalSlides - 1);
 }
 
 function nextSlide() { goToSlide(currentSlide + 1); }
@@ -945,6 +949,19 @@ slideCharts[11] = function() {
     }
   });
 };
+
+// ===== SPOTIFY PLAYER =====
+function handleSpotify(show) {
+  const wrapper = document.getElementById('spotify-wrapper');
+  const iframe = document.getElementById('spotify-embed');
+  if (show) {
+    wrapper.style.display = 'block';
+    iframe.src = 'https://open.spotify.com/embed/track/0zmxiaLNRcFKLO1RSsjZr9?utm_source=generator&autoplay=1';
+  } else {
+    wrapper.style.display = 'none';
+    iframe.src = '';
+  }
+}
 
 // ===== INIT =====
 updateNav();
