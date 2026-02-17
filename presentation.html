@@ -415,16 +415,8 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
       <div class="kpi-benchmark">0% = perfect</div>
     </div>
   </div>
-  <div class="fade-up" style="margin-top:28px; display:flex; gap:32px; align-items:center;">
-    <div style="background:#1a1a1a; border-radius:8px; padding:16px 24px; text-align:center;">
-      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px;">Mean RLH</div>
-      <div style="font-family:'Bebas Neue',sans-serif; font-size:32px; color:#E87C03;">0.638</div>
-    </div>
-    <div style="background:#1a1a1a; border-radius:8px; padding:16px 24px; text-align:center;">
-      <div style="font-size:12px; color:#808080; text-transform:uppercase; letter-spacing:1px;">Pct. Certainty</div>
-      <div style="font-family:'Bebas Neue',sans-serif; font-size:32px; color:#E87C03;">51.7%</div>
-    </div>
-    <div style="font-size:14px; color:#808080; max-width:400px;">
+  <div class="fade-up" style="margin-top:28px; display:flex; gap:32px; align-items:center; justify-content:center;">
+    <div style="font-size:14px; color:#808080; max-width:500px;">
       Model correctly predicts the chosen alternative <strong style="color:#fff;">59.4%</strong> of the time, <strong style="color:#46D369;">2.4&times; better than random guessing</strong>.
     </div>
   </div>
@@ -476,8 +468,50 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
 </div>
 
-<!-- ===== SLIDE 12: MARKET SIMULATION ===== -->
-<div class="slide" id="slide-12" style="padding:40px 60px;">
+<!-- ===== SLIDE 12: SEGMENTATION ANALYSIS ===== -->
+<div class="slide" id="slide-12">
+  <div class="section-header fade-up">Results</div>
+  <div class="slide-title fade-up">Who Values What?</div>
+  <div class="slide-text fade-up" style="margin-bottom:20px;">
+    Beyond aggregate results, we ran subgroup analyses using individual-level HB betas to test whether preferences differ across segments.
+  </div>
+  <div class="card-grid fade-up" style="grid-template-columns:1fr 1fr; max-width:950px;">
+    <div class="card">
+      <div class="card-title">Heavy vs Light Users</div>
+      <div class="card-body">
+        Median split on weekly OTT hours.<br><br>
+        Heavy users place <strong>more weight on streams and ads</strong>, and are slightly less price-sensitive, consistent with multi-device household viewing.<br><br>
+        <span style="color:#808080;">However, WTP differences were <strong style="color:#E87C03;">not statistically significant</strong> (Wilcoxon p > 0.05), partly due to small heavy-user group (n=17).</span>
+      </div>
+    </div>
+    <div class="card" style="border-left:2px solid #46D369;">
+      <div class="card-title">Age Segments (18&ndash;24 / 25&ndash;34 / 35+)</div>
+      <div class="card-body">
+        WTP for <strong>multi-screen access</strong> (4 vs 1 screen) differs significantly by age.<br><br>
+        <strong style="color:#46D369;">Kruskal-Wallis p = 0.017</strong><br>
+        Driven by 18&ndash;24 vs 25&ndash;34 (pairwise p = 0.013).<br><br>
+        <div style="display:flex; gap:16px; margin-top:8px;">
+          <div style="text-align:center; flex:1; background:#1a1a1a; border-radius:8px; padding:12px;">
+            <div style="font-family:'Bebas Neue',sans-serif; font-size:28px; color:#46D369;">&euro;5.33</div>
+            <div style="font-size:12px; color:#808080;">Median WTP<br>18&ndash;24</div>
+          </div>
+          <div style="text-align:center; flex:1; background:#1a1a1a; border-radius:8px; padding:12px;">
+            <div style="font-family:'Bebas Neue',sans-serif; font-size:28px; color:#E87C03;">&euro;0.88</div>
+            <div style="font-size:12px; color:#808080;">Median WTP<br>25&ndash;34</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="fade-up" style="margin-top:20px; max-width:950px;">
+    <div class="card" style="padding:16px;">
+      <div class="card-body" style="font-size:13px;"><strong style="color:#E50914;">Managerial implication:</strong> Household and plan-sharing upsells should be targeted at 18&ndash;24 users, where WTP for multi-screen is highest. For 25&ndash;34, multi-screen is unlikely to be a primary upsell lever.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SLIDE 13: MARKET SIMULATION ===== -->
+<div class="slide" id="slide-13" style="padding:40px 60px;">
   <div class="section-header fade-up">Results</div>
   <div class="slide-title fade-up" style="font-size:clamp(28px,4vw,52px);">Market Simulation</div>
   <div class="sim-grid fade-up">
@@ -520,8 +554,8 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
 </div>
 
-<!-- ===== SLIDE 13: SCENARIOS ===== -->
-<div class="slide" id="slide-13">
+<!-- ===== SLIDE 14: SCENARIOS ===== -->
+<div class="slide" id="slide-14">
   <div class="section-header fade-up">Results</div>
   <div class="slide-title fade-up">What If We Drop the Family Plan?</div>
   <div class="slide-text fade-up" style="margin-bottom:28px;">
@@ -578,8 +612,8 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
 </div>
 
-<!-- ===== SLIDE 14: MANAGERIAL IMPLICATIONS ===== -->
-<div class="slide" id="slide-14">
+<!-- ===== SLIDE 15: MANAGERIAL IMPLICATIONS ===== -->
+<div class="slide" id="slide-15">
   <div class="section-header fade-up">Discussion</div>
   <div class="slide-title fade-up">Key Takeaways</div>
   <div class="insight-grid fade-up">
@@ -616,34 +650,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
 </div>
 
-<!-- ===== SLIDE 15: LIMITATIONS ===== -->
-<div class="slide" id="slide-15">
-  <div class="section-header fade-up">Discussion</div>
-  <div class="slide-title fade-up" style="margin-bottom:8px;">Coming Soon...</div>
-  <div class="slide-text fade-up" style="margin-bottom:32px;">Limitations of our study and directions for future research</div>
-  <div class="lim-grid fade-up">
-    <div class="lim-card">
-      <div class="lim-icon" style="color:#E50914;">&#9888;</div>
-      <h3>Convenience Sample</h3>
-      <p>Young, student-heavy sample (median age 24). Findings may not generalize to older demographics or other markets.</p>
-    </div>
-    <div class="lim-card">
-      <div class="lim-icon" style="color:#E87C03;">&#128173;</div>
-      <h3>Hypothetical Bias</h3>
-      <p>Stated preferences may differ from revealed (actual) purchase behavior — a known limitation of all conjoint methods.</p>
-    </div>
-    <div class="lim-card">
-      <div class="lim-icon" style="color:#0080FF;">&#127916;</div>
-      <h3>No Brand Effects</h3>
-      <p>Our unlabeled CBC design omits brand equity. Real choices are heavily influenced by Netflix, Disney+, etc. brand loyalty.</p>
-    </div>
-    <div class="lim-card">
-      <div class="lim-icon" style="color:#46D369;">&#128300;</div>
-      <h3>Future Research</h3>
-      <p>Labeled design with real brands, larger/diverse samples, revealed preference validation, and dynamic pricing experiments.</p>
-    </div>
-  </div>
-</div>
 
 <!-- ===== SLIDE 16: CREDITS ===== -->
 <div class="slide" id="slide-16">
