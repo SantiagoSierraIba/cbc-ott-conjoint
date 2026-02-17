@@ -5,3 +5,4 @@ Group Case.Rproj
 .Rhistory
 .DS_Store
 hbmnl/
+.gitignore

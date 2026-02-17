@@ -1,0 +1,2757 @@
+---
+title: "Choice-Based Conjoint Analysis: OTT Streaming Platforms"
+subtitle: "Data Exploration, Cleaning & CBC Estimation"
+author: "Group X: Laura Pérez, Likitha Yenuga, Ishika Narang, Yu Hsun Fang, Jonah Paige, Santiago Sierra"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    theme: flatly
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+# R Setup
+
+```{r packages}
+if (!require("pacman")) {
+  install.packages("pacman")
+  library("pacman")
+}
+
+pacman::p_load(
+  "tidyverse",
+  "readxl",
+  "janitor",
+  "scales",
+  "knitr",
+  "kableExtra",
+  "lubridate",
+  "fastDummies",
+  "mlogit",
+  "gmnl",
+  "ChoiceModelR"
+)
+```
+
+# Introduction
+
+This report documents our CBC analysis of consumer preferences for OTT streaming platforms. It covers the full pipeline: data exploration and cleaning, MNL and HB-MNL estimation, predictive validation, part-worth utilities, WTP, and market simulations.
+
+## CBC Design Overview
+
+| Design Element | Specification |
+|:---|:---|
+| Conjoint Method | Choice-Based Conjoint (CBC) |
+| Design Type | Random (computer-generated via Discover) |
+| Choice Tasks per Respondent | 10 |
+| Alternatives per Task | 3 streaming profiles + 1 "None" option |
+| Holdout Tasks | 1 (fixed, for validation) |
+
+## Attributes and Levels
+
+```{r attributes-table}
+attr_df <- data.frame(
+  Attribute = c(
+    rep("Monthly Price", 5), rep("Ads", 3), rep("Video Quality", 3),
+    rep("Simultaneous Streams", 3), rep("Content Type", 3)
+  ),
+  Level = c(
+    "€4.99", "€7.99", "€9.99", "€12.99", "€14.99",
+    "With Ads", "Limited Ads (before content)", "Ad-free",
+    "HD (720p)", "Full HD (1080p)", "4K + HDR",
+    "1 screen", "2 screens", "4 screens",
+    "Licensed Content Only", "Originals & Licensed", "Exclusive Originals Only"
+  ),
+  Code = c(
+    "1", "2", "3", "4", "5",
+    "1", "2", "3",
+    "1", "2", "3",
+    "1", "2", "3",
+    "1", "2", "3"
+  )
+)
+
+attr_df %>%
+  kable(caption = "CBC Attributes, Levels, and Design Codes") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  collapse_rows(columns = 1, valign = "top")
+```
+
+Full factorial: $5 \times 3 \times 3 \times 3 \times 3 = 405$ possible profiles.
+
+# Data Loading
+
+```{r load-data}
+# Respondent-level survey data
+raw_all     <- read_excel("CPM Survey - Respondent Data.xlsx", sheet = "All Data")
+raw_utils   <- read_excel("CPM Survey - Respondent Data.xlsx", sheet = "Rescaled - CBC - Random")
+raw_imports <- read_excel("CPM Survey - Respondent Data.xlsx", sheet = "Importances - CBC - Random")
+
+# Long-format CBC design with attribute codes and choices
+design_raw  <- read_excel("CPM Survey - CBC - Random Design & choices.xlsx",
+                          sheet = "Design & Choices")
+```
+
+```{r sheet-summary}
+data.frame(
+  Source = c("All Data", "Rescaled Utilities", "Importances", "Design & Choices"),
+  Rows = c(nrow(raw_all), nrow(raw_utils), nrow(raw_imports), nrow(design_raw)),
+  Columns = c(ncol(raw_all), ncol(raw_utils), ncol(raw_imports), ncol(design_raw)),
+  Description = c(
+    "Survey responses (demographics, usage, CBC choices, segments)",
+    "Individual-level HB rescaled part-worth utilities",
+    "Individual-level attribute importance scores",
+    "Long-format experimental design with attribute codes and responses"
+  )
+) %>%
+  kable(caption = "Data Sources Overview") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+# Data Cleaning
+
+## Survey Data
+
+Row 1 of "All Data" contains survey question text (not a respondent). We remove it and clean variables.
+
+```{r clean-survey}
+survey <- raw_all[-1, ] %>%
+  rename(
+    record_id       = `Record ID`,
+    status          = `Respondent Status`,
+    start_time      = `Start Time (UTC)`,
+    end_time        = `End Time (UTC)`,
+    gender          = Gender,
+    age             = Age,
+    employment      = `Employment Status`,
+    education       = Education,
+    income          = Income,
+    ott_use         = `Use of OTT?`,
+    n_subscriptions = `Number of Subscriptions`,
+    platform_netflix = `Platforms currently in use_Netflix`,
+    platform_disney  = `Platforms currently in use_Disney+`,
+    platform_amazon  = `Platforms currently in use_Amazon Prime`,
+    platform_hbo     = `Platforms currently in use_HBO Max`,
+    platform_apple   = `Platforms currently in use_Apple TV+`,
+    platform_other   = `Platforms currently in use_Other(s):`,
+    spending        = Spending,
+    hours_ott       = `Hours spent on OTT`,
+    holdout         = `Holdout Question`
+  ) %>%
+  mutate(
+    age             = as.numeric(age),
+    n_subscriptions = as.numeric(n_subscriptions),
+    gender          = as.factor(gender),
+    elapsed_minutes = as.numeric(difftime(end_time, start_time, units = "mins")),
+    across(starts_with("platform_"), ~ ifelse(is.na(.), 0L, 1L))
+  )
+
+# Rename CBC task columns
+for (i in 1:10) {
+  names(survey)[names(survey) == paste0("CBC - Random_", i)] <- paste0("cbc_task_", i)
+}
+survey <- survey %>%
+  mutate(across(starts_with("cbc_task_"), ~ as.integer(.x)))
+
+cat("Respondents:", nrow(survey), "\n")
+cat("Unique IDs:", length(unique(survey$record_id)), "\n")
+cat("Duplicates:", sum(duplicated(survey$record_id)), "\n")
+```
+
+## Design Data
+
+The design file contains the full CBC experiment in long format: one row per alternative per task per respondent, with integer-coded attribute levels and a binary response indicator.
+
+```{r inspect-design}
+cat("Design rows:", nrow(design_raw), "\n")
+cat("Respondents in design:", length(unique(design_raw$`Record ID`)), "\n")
+cat("Tasks:", length(unique(design_raw$Task)), "\n")
+cat("Concepts per task:", length(unique(design_raw$Concept)), "\n")
+
+head(design_raw, 8)
+```
+
+```{r check-design-respondents}
+# One respondent in survey has no design data
+missing_from_design <- setdiff(survey$record_id, design_raw$`Record ID`)
+cat("Respondents missing from design file:", length(missing_from_design), "\n")
+if (length(missing_from_design) > 0) cat("  ID:", missing_from_design, "\n")
+```
+
+We restrict the analysis to the **105 respondents** present in both datasets.
+
+```{r prepare-cbc}
+# Rename design columns
+cbc <- design_raw %>%
+  rename(
+    record_id = `Record ID`,
+    task      = Task,
+    alt       = Concept,
+    price_code     = `Monthly Price`,
+    ads_code       = Ads,
+    quality_code   = `Video Quality`,
+    streams_code   = `Simultaneous Streams`,
+    content_code   = `Content Type`,
+    choice         = Response
+  )
+
+# Map integer codes to actual attribute values
+price_map   <- c(`1` = 4.99, `2` = 7.99, `3` = 9.99, `4` = 12.99, `5` = 14.99)
+ads_map     <- c(`1` = "With Ads", `2` = "Limited Ads", `3` = "Ad-free")
+quality_map <- c(`1` = "HD 720p", `2` = "Full HD 1080p", `3` = "4K HDR")
+streams_map <- c(`1` = "1 screen", `2` = "2 screens", `3` = "4 screens")
+content_map <- c(`1` = "Licensed Only", `2` = "Originals & Licensed", `3` = "Exclusive Originals")
+
+cbc <- cbc %>%
+  mutate(
+    # Numeric price (0 for None)
+    Price = ifelse(price_code == 0, 0, price_map[as.character(price_code)]),
+    # NONE indicator
+    NONE = as.integer(alt == 4),
+    # Create numeric respondent id
+    id = as.integer(factor(record_id, levels = unique(record_id)))
+  )
+
+cat("CBC data dimensions:", nrow(cbc), "rows x", ncol(cbc), "cols\n")
+cat("Respondents:", length(unique(cbc$id)), "\n")
+cat("Total choice sets:", nrow(cbc) / 4, "\n")
+cat("Choices (Response=1):", sum(cbc$choice), "\n")
+```
+
+## Verify Data Integrity
+
+```{r verify-integrity}
+# Exactly one choice per choice set
+choices_per_set <- cbc %>%
+  group_by(id, task) %>%
+  summarise(n_chosen = sum(choice), .groups = "drop")
+
+cat("All choice sets have exactly 1 choice:",
+    all(choices_per_set$n_chosen == 1), "\n")
+
+# None option always in alt = 4 with all codes = 0
+none_rows <- cbc %>% filter(NONE == 1)
+cat("None rows always have zero attribute codes:",
+    all(none_rows$price_code == 0 &
+        none_rows$ads_code == 0 &
+        none_rows$quality_code == 0 &
+        none_rows$streams_code == 0 &
+        none_rows$content_code == 0), "\n")
+```
+
+
+# Response Quality Assessment
+
+## Completion Times
+
+```{r completion-times}
+survey %>%
+  ggplot(aes(x = elapsed_minutes)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.8) +
+  geom_vline(xintercept = median(survey$elapsed_minutes, na.rm = TRUE),
+    linetype = "dashed", color = "darkred", linewidth = 0.8) +
+  annotate("text",
+    x = median(survey$elapsed_minutes, na.rm = TRUE) + 1,
+    y = Inf, vjust = 2, hjust = 0,
+    label = paste0("Median: ", round(median(survey$elapsed_minutes, na.rm = TRUE), 1), " min"),
+    color = "darkred", fontface = "bold") +
+  scale_x_continuous(breaks = seq(0, 30, 2), limits = c(0, 30)) +
+  labs(title = "Distribution of Survey Completion Times",
+       subtitle = "Excluding extreme outliers (>30 min)",
+       x = "Elapsed Time (minutes)", y = "Count") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        axis.text = element_text(color = "black"))
+```
+
+## Quality Flags and Respondent Removal
+
+We identify low-quality respondents using the following criteria:
+
+- **Speeders**: completed in under 3 minutes
+- **Straight-liners**: chose the same alternative in 8 or more of 10 tasks
+- **Removal criterion**: only respondents who are **both** speeders AND straight-liners are removed. Fast completers with varied response patterns are kept, and non-subscribers who consistently chose "None" are kept (rational opt-out).
+
+```{r quality-flags}
+# Match survey to design respondents
+survey_matched <- survey %>% filter(record_id %in% unique(cbc$record_id))
+
+survey_matched <- survey_matched %>%
+  mutate(
+    none_count = rowSums(across(starts_with("cbc_task_"), ~ .x == 4)),
+    same_choice_count = apply(
+      select(., starts_with("cbc_task_")), 1,
+      function(x) max(table(x))
+    ),
+    flag_speeder       = elapsed_minutes < 3,
+    flag_straightliner = same_choice_count >= 8,
+    # Remove ONLY if both speeder AND straightliner
+    flag_remove        = flag_speeder & flag_straightliner
+  )
+
+data.frame(
+  Flag = c("Speeders (<3 min)", "Straight-liners (≥8 same)",
+           "Speeder AND Straight-liner (removed)",
+           "Retained respondents"),
+  Count = c(
+    sum(survey_matched$flag_speeder),
+    sum(survey_matched$flag_straightliner),
+    sum(survey_matched$flag_remove),
+    sum(!survey_matched$flag_remove)
+  )
+) %>%
+  kable(caption = "Response Quality Assessment (n=105)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r show-removed}
+removed <- survey_matched %>% filter(flag_remove)
+if (nrow(removed) > 0) {
+  removed %>%
+    select(record_id, elapsed_minutes, same_choice_count, none_count, gender, age) %>%
+    mutate(elapsed_minutes = round(elapsed_minutes, 1)) %>%
+    kable(
+      caption = "Removed Respondents (Speeder + Straight-liner)",
+      col.names = c("Record ID", "Minutes", "Max Same Choice", "None Count", "Gender", "Age")
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+}
+```
+
+```{r apply-removal}
+# Remove flagged respondents from both survey and CBC design data
+ids_to_remove <- survey_matched %>% filter(flag_remove) %>% pull(record_id)
+survey_matched <- survey_matched %>% filter(!flag_remove)
+cbc <- cbc %>% filter(!record_id %in% ids_to_remove)
+
+cat("Respondents after removal:", nrow(survey_matched), "\n")
+cat("CBC rows after removal:", nrow(cbc), "\n")
+cat("Respondents in CBC:", length(unique(cbc$id)), "\n")
+
+# Reassign numeric IDs after removal
+cbc <- cbc %>%
+  mutate(id = as.integer(factor(record_id, levels = unique(record_id))))
+```
+
+> We apply a conservative removal criterion (both conditions must hold) to preserve sample size. Respondents who completed quickly but varied their answers likely engaged with the task. Non-subscribers choosing "None" consistently reflect a legitimate preference, not inattention.
+
+# Respondent Demographics
+
+```{r gender-plot}
+survey_matched %>%
+  count(gender) %>%
+  mutate(pct = round(n / sum(n) * 100, 1)) %>%
+  ggplot(aes(x = gender, y = n, fill = gender)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = paste0(n, " (", pct, "%)")),
+    vjust = -0.5, fontface = "bold", size = 4) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Gender Distribution", x = "", y = "Count") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        legend.position = "none",
+        axis.text = element_text(color = "black"))
+```
+
+```{r age-plot}
+survey_matched %>%
+  ggplot(aes(x = age)) +
+  geom_histogram(bins = 20, fill = "steelblue", color = "white", alpha = 0.8) +
+  geom_vline(xintercept = median(survey_matched$age, na.rm = TRUE),
+    linetype = "dashed", color = "darkred", linewidth = 0.8) +
+  annotate("text",
+    x = median(survey_matched$age, na.rm = TRUE) + 1.5,
+    y = Inf, vjust = 2, hjust = 0,
+    label = paste0("Median: ", median(survey_matched$age, na.rm = TRUE)),
+    color = "darkred", fontface = "bold") +
+  labs(title = "Age Distribution", x = "Age", y = "Count") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        axis.text = element_text(color = "black"))
+```
+
+```{r employment-income, fig.height=5}
+p1 <- survey_matched %>%
+  count(employment) %>%
+  mutate(pct = round(n / sum(n) * 100, 1), employment = fct_reorder(employment, n)) %>%
+  ggplot(aes(x = n, y = employment)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  geom_text(aes(label = paste0(n, " (", pct, "%)")), hjust = -0.1, size = 3.5) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.3))) +
+  labs(title = "Employment Status", x = "Count", y = "") +
+  theme_bw(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"))
+
+p2 <- survey_matched %>%
+  count(income) %>%
+  mutate(
+    pct = round(n / sum(n) * 100, 1),
+    income = factor(income, levels = c(
+      "Less than €1499", "€1500 - €2499", "€2500 - €3499",
+      "€3500 - €4999", "More than €5000"
+    ))
+  ) %>%
+  filter(!is.na(income)) %>%
+  ggplot(aes(x = income, y = n, fill = income)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = paste0(n, " (", pct, "%)")), vjust = -0.5, size = 3.5) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 12)) +
+  labs(title = "Monthly Net Income", x = "", y = "Count") +
+  theme_bw(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"), legend.position = "none")
+
+p1
+p2
+```
+
+> The sample is predominantly young (median age `r median(survey_matched$age, na.rm = TRUE)`), consisting mostly of students and early-career professionals with low-to-moderate incomes — typical of a university convenience sample.
+
+# OTT Usage Patterns
+
+```{r ott-use}
+survey_matched %>%
+  count(ott_use) %>%
+  mutate(pct = round(n / sum(n) * 100, 1), ott_use = fct_reorder(ott_use, n)) %>%
+  ggplot(aes(x = n, y = ott_use, fill = ott_use)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = paste0(n, " (", pct, "%)")),
+    hjust = -0.1, fontface = "bold", size = 4) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.3))) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "OTT Subscription Status", x = "Count", y = "") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"), legend.position = "none")
+```
+
+```{r platform-usage}
+data.frame(
+  Platform = c("Netflix", "Disney+", "Amazon Prime", "HBO Max", "Apple TV+", "Other"),
+  Users = c(
+    sum(survey_matched$platform_netflix), sum(survey_matched$platform_disney),
+    sum(survey_matched$platform_amazon), sum(survey_matched$platform_hbo),
+    sum(survey_matched$platform_apple), sum(survey_matched$platform_other)
+  )
+) %>%
+  mutate(Pct = round(Users / nrow(survey_matched) * 100, 1),
+         Platform = fct_reorder(Platform, Users)) %>%
+  ggplot(aes(x = Users, y = Platform, fill = Platform)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = paste0(Users, " (", Pct, "%)")),
+    hjust = -0.1, fontface = "bold", size = 4) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.3))) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Platform Usage", x = "Number of Users", y = "") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"), legend.position = "none")
+```
+
+# Correlation Analysis
+
+Before model estimation, we test a few associations between respondent characteristics and their CBC choices.
+
+## Higher Price Choices vs Income
+
+Do higher-income respondents tend to choose more expensive streaming options? We compute the average price of each respondent's chosen alternatives (excluding "None" choices) and correlate it with income.
+
+```{r corr-price-income}
+# Compute average chosen price per respondent
+avg_chosen_price <- cbc %>%
+  filter(choice == 1 & NONE == 0) %>%
+  group_by(record_id) %>%
+  summarise(avg_price = mean(Price), n_real_choices = n(), .groups = "drop")
+
+# Map income to ordinal numeric
+income_order <- c(
+  "Less than €1499" = 1,
+  "€1500 - €2499" = 2,
+  "€2500 - €3499" = 3,
+  "€3500 - €4999" = 4,
+  "More than €5000"  = 5
+)
+
+corr_price_income <- survey_matched %>%
+  select(record_id, income) %>%
+  mutate(income_num = income_order[as.character(income)]) %>%
+  inner_join(avg_chosen_price, by = "record_id") %>%
+  filter(!is.na(income_num))
+
+cor_val <- round(cor(corr_price_income$income_num,
+                     corr_price_income$avg_price,
+                     use = "complete.obs"), 3)
+
+income_labels <- c(`1` = "<€1.5k", `2` = "€1.5-2.5k", `3` = "€2.5-3.5k",
+                    `4` = "€3.5-5k", `5` = "€5k+")
+
+corr_price_income %>%
+  mutate(income_label = income_labels[as.character(income_num)]) %>%
+  ggplot(aes(x = reorder(income_label, income_num), y = avg_price)) +
+  geom_boxplot(fill = "steelblue", alpha = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.4, size = 2) +
+  annotate("text", x = 1, y = max(corr_price_income$avg_price) + 0.3,
+    label = paste0("Spearman r = ", cor_val), hjust = 0,
+    fontface = "italic", size = 4, color = "darkred") +
+  labs(title = "Average Chosen Price vs Income Level",
+       subtitle = "Among non-None choices only",
+       x = "Income Level", y = "Average Chosen Price (€)") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        axis.text = element_text(color = "black"))
+
+cat("Spearman correlation (income vs avg chosen price):", cor_val, "\n")
+cor.test(corr_price_income$income_num, corr_price_income$avg_price,
+         method = "spearman")
+```
+
+## Multi-Screen Choices vs Shared Account Usage
+
+Do respondents who use shared/family accounts tend to choose plans with more simultaneous screens? We test this by comparing the average number of screens chosen by self-paying subscribers versus shared-account users.
+
+```{r corr-screens-shared}
+# Map streams code to numeric screens
+streams_numeric <- c(`1` = 1, `2` = 2, `3` = 4)
+
+avg_chosen_streams <- cbc %>%
+  filter(choice == 1 & NONE == 0) %>%
+  mutate(screens = streams_numeric[as.character(streams_code)]) %>%
+  group_by(record_id) %>%
+  summarise(avg_screens = mean(screens), .groups = "drop")
+
+corr_streams <- survey_matched %>%
+  select(record_id, ott_use) %>%
+  filter(!is.na(ott_use) & ott_use != "No") %>%
+  mutate(account_type = ifelse(
+    grepl("family|friend", ott_use, ignore.case = TRUE),
+    "Shared Account", "Self-Paying"
+  )) %>%
+  inner_join(avg_chosen_streams, by = "record_id")
+
+corr_streams %>%
+  ggplot(aes(x = account_type, y = avg_screens, fill = account_type)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.15, alpha = 0.4, size = 2) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Average Chosen Screens vs Account Type",
+       subtitle = "Self-paying subscribers vs shared account users",
+       x = "", y = "Average Screens Chosen") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        legend.position = "none",
+        axis.text = element_text(color = "black"))
+
+# Wilcoxon test
+wt <- wilcox.test(avg_screens ~ account_type, data = corr_streams)
+cat("Wilcoxon test p-value:", round(wt$p.value, 4), "\n")
+
+corr_streams %>%
+  group_by(account_type) %>%
+  summarise(
+    N = n(),
+    Mean_Screens = round(mean(avg_screens), 2),
+    SD = round(sd(avg_screens), 2),
+    .groups = "drop"
+  ) %>%
+  kable(
+    caption = "Average Screens Chosen by Account Type",
+    col.names = c("Account Type", "N", "Mean Screens", "SD")
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Education Level vs Subscription Type and Account Sharing
+
+We examine whether Bachelor's-level respondents differ from Master's-level respondents in their subscription behavior (self-paying vs shared) and content preferences.
+
+```{r corr-education-sharing}
+edu_sharing <- survey_matched %>%
+  filter(!is.na(ott_use) & ott_use != "No" & !is.na(education)) %>%
+  mutate(
+    edu_level = case_when(
+      grepl("High school", education) ~ "High School",
+      grepl("Bachelor", education)    ~ "Bachelor's",
+      grepl("Master", education)      ~ "Master's"
+    ),
+    account_type = ifelse(
+      grepl("family|friend", ott_use, ignore.case = TRUE),
+      "Shared", "Self-Paying"
+    )
+  ) %>%
+  filter(edu_level %in% c("Bachelor's", "Master's"))
+
+# Cross-tabulation
+edu_xtab <- table(edu_sharing$edu_level, edu_sharing$account_type)
+cat("Education x Account Type:\n")
+print(edu_xtab)
+cat("\nProportions (row-wise):\n")
+print(round(prop.table(edu_xtab, margin = 1) * 100, 1))
+
+# Chi-squared test
+chi_test <- chisq.test(edu_xtab, correct = FALSE)
+cat("\nChi-squared test p-value:", round(chi_test$p.value, 4), "\n")
+
+# Visualization
+edu_sharing %>%
+  count(edu_level, account_type) %>%
+  group_by(edu_level) %>%
+  mutate(pct = round(n / sum(n) * 100, 1)) %>%
+  ggplot(aes(x = edu_level, y = pct, fill = account_type)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  geom_text(aes(label = paste0(pct, "%")),
+    position = position_dodge(0.9), vjust = -0.5, fontface = "bold", size = 4) +
+  scale_fill_brewer(palette = "Set2", name = "Account Type") +
+  scale_y_continuous(limits = c(0, 80)) +
+  labs(title = "Account Type by Education Level",
+       subtitle = "Among OTT subscribers only",
+       x = "", y = "Percentage (%)") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        legend.position = "bottom",
+        axis.text = element_text(color = "black"))
+```
+
+```{r corr-education-subscriptions}
+# Number of subscriptions by education
+edu_subs <- survey_matched %>%
+  filter(!is.na(n_subscriptions) & !is.na(education)) %>%
+  mutate(edu_level = case_when(
+    grepl("High school", education) ~ "High School",
+    grepl("Bachelor", education)    ~ "Bachelor's",
+    grepl("Master", education)      ~ "Master's"
+  )) %>%
+  filter(edu_level %in% c("Bachelor's", "Master's"))
+
+edu_subs %>%
+  group_by(edu_level) %>%
+  summarise(
+    N = n(),
+    Mean_Subs = round(mean(n_subscriptions), 2),
+    SD = round(sd(n_subscriptions), 2),
+    .groups = "drop"
+  ) %>%
+  kable(
+    caption = "Number of Subscriptions by Education Level",
+    col.names = c("Education", "N", "Mean Subscriptions", "SD")
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+# CBC Choice Data Analysis
+
+## Overall Choice Distribution
+
+```{r choice-overall}
+none_chosen_pct <- round(
+  sum(cbc$choice == 1 & cbc$NONE == 1) / sum(cbc$choice == 1) * 100, 1
+)
+
+cbc %>%
+  filter(choice == 1) %>%
+  mutate(choice_label = ifelse(NONE == 1, "None",
+    paste0("Alt ", alt))) %>%
+  count(choice_label) %>%
+  mutate(pct = round(n / sum(n) * 100, 1)) %>%
+  ggplot(aes(x = choice_label, y = pct,
+    fill = choice_label)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(aes(label = paste0(pct, "%")),
+    vjust = -0.5, fontface = "bold", size = 5) +
+  scale_fill_manual(values = c("#4DAF4A", "#377EB8", "#FF7F00", "#E41A1C")) +
+  scale_y_continuous(limits = c(0, 40)) +
+  labs(title = "Overall Choice Proportions",
+       subtitle = paste0("None chosen in ", none_chosen_pct, "% of all tasks"),
+       x = "", y = "Percentage (%)") +
+  theme_bw(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"),
+        legend.position = "none",
+        axis.text = element_text(color = "black"))
+```
+
+## Cross-tabulations: Price vs Choice
+
+```{r price-xtab}
+# Among non-None alternatives, how does choice relate to price?
+cbc_real <- cbc %>% filter(NONE == 0)
+
+xtab_price <- xtabs(~ Price + choice, data = cbc_real)
+cat("Cross-tabulation: Price x Choice\n")
+print(xtab_price)
+
+cat("\nRelative frequency of choices by price level:\n")
+rel_freq <- xtabs(choice ~ Price, data = cbc_real) /
+  sum(xtabs(choice ~ Price, data = cbc_real))
+print(round(rel_freq, 3))
+```
+
+```{r price-mosaic}
+plot(xtabs(~ Price + choice, data = cbc_real),
+     main = "Mosaic Plot: Price vs Choice",
+     color = c("lightcoral", "steelblue"))
+```
+
+## Cross-tabulation: Ads vs Choice
+
+```{r ads-xtab}
+cbc_real <- cbc_real %>%
+  mutate(Ads = ads_map[as.character(ads_code)])
+
+cat("Relative frequency of choices by ad level:\n")
+rel_freq_ads <- xtabs(choice ~ Ads, data = cbc_real) /
+  sum(xtabs(choice ~ Ads, data = cbc_real))
+print(round(rel_freq_ads, 3))
+```
+
+```{r ads-mosaic}
+plot(xtabs(~ Ads + choice, data = cbc_real),
+     main = "Mosaic Plot: Ads vs Choice",
+     color = c("lightcoral", "steelblue"))
+```
+
+# Sample Size Sufficiency
+
+$$N \geq \frac{500 \cdot c}{t \cdot a}$$
+
+```{r sample-size-check}
+N <- length(unique(cbc$id))  # 105
+c_max <- 5                    # Price has 5 levels
+t_tasks <- 10                 # 10 CBC tasks
+a_alts <- 3                   # 3 alternatives (excl. None)
+
+required_N <- ceiling(500 * c_max / (t_tasks * a_alts))
+actual_ratio <- N * t_tasks * a_alts / c_max
+
+cat("N =", N, "| c =", c_max, "| t =", t_tasks, "| a =", a_alts, "\n")
+cat("Minimum N required:", required_N, "\n")
+cat("N × t × a / c =", actual_ratio, "(≥ 500 required)\n")
+cat("Result:", ifelse(actual_ratio >= 500, "SUFFICIENT", "INSUFFICIENT"), "\n")
+```
+# Data Preparation for Estimation
+
+Two coding decisions shape the estimation: **effects coding** for categorical attributes and a **linear mean-centered price**.
+
+**From here on, I did my own analysis and added a checklist of what i need to cover for each section:**
+
+# MNL Model Estimation (Aggregate Level)
+✓ Created effects-coded design matrix
+
+✓ Mean-centered price variable
+
+✓ Estimated MNL using mlogit package
+
+✓ Extracted coefficients
+
+✓ Calculated part-worth utilities
+
+✓ Computed Relative Attribute Importance (RAI)
+
+✓ Calculated Willingness-to-Pay (WTP)
+
+```{r}
+# --- Helper functions for CBC estimation ---
+
+# Effects coding (reference level becomes -1; works nicely with a None option)
+effects_coding <- function(ws, vars, none = FALSE) {
+  variables <- deparse(substitute(vars))
+  variables <- gsub("c\\(|\\)", "", variables)
+  variables <- trimws(unlist(strsplit(variables, ",")))
+
+  if (isTRUE(none)) {
+    none_ws <- dplyr::filter(ws, apply(ws[variables], 1, sum) == 0)
+    ws      <- dplyr::filter(ws, apply(ws[variables], 1, sum) != 0)
+  }
+
+  for (a in variables) {
+    current <- names(ws)
+    ws <- ws %>%
+      fastDummies::dummy_cols(select_columns = a, remove_first_dummy = TRUE)
+    helper <- setdiff(names(ws), current)
+
+    ws[["del"]] <- apply(ws[helper], 1, sum)
+    ws <- ws %>%
+      mutate(across(all_of(helper), ~ ifelse(del == 0, -1, .x)), del = NULL)
+  }
+
+  if (isTRUE(none)) {
+    mis_names <- setdiff(names(ws), names(none_ws))
+    none_ws[mis_names] <- 0
+    ws <- rbind(ws, none_ws)
+  }
+  return(ws)
+}
+
+# Mean-center price (excluding None rows where Price==0)
+mc_price <- function(.data, price) {
+  price_var <- dplyr::select(.data, {{ price }}) %>% pull()
+  mw <- mean(price_var[price_var != 0])
+  price_mc <- ifelse(price_var != 0, price_var - mw, 0)
+  .data %>% mutate(price_mc = price_mc)
+}
+
+# Numerically stable softmax
+log_sum_exp <- function(x) {
+  cc <- max(x)
+  cc + log(sum(exp(x - cc)))
+}
+mnl_prob <- function(x) {
+  exp(x - log_sum_exp(x))
+}
+
+```
+
+```{r}
+# --- Construct estimation-ready CBC data ---
+
+cbc_clean <- cbc %>%
+  select(id, record_id, task, alt, choice, NONE,
+         ads_code, quality_code, streams_code, content_code, Price) %>%
+  rename(
+    ads = ads_code,
+    quality = quality_code,
+    streams = streams_code,
+    content = content_code
+  ) %>%
+  # For NONE rows, set attribute codes to 0 (should already be true, but keep safe)
+  mutate(across(c(ads, quality, streams, content), ~ ifelse(NONE == 1, 0L, .x)))
+
+cbc_eff <- cbc_clean %>%
+  effects_coding(vars = c(ads, quality, streams, content), none = TRUE) %>%
+  arrange(id, task, alt) %>%
+  mc_price(Price) %>%
+  mutate(obs = cumsum(c(1, diff(task) != 0 | diff(id) != 0)))
+
+# Quick sanity peek
+cbc_eff %>% filter(id == 1) %>% head(8)
+
+```
+
+```{r}
+# --- MNL estimation using mlogit ---
+
+choice_data <- dfidx(
+  cbc_eff,
+  shape = "long",
+  choice = "choice",
+  idx = c("obs", "alt")
+)
+
+# Full model
+mnl1 <- mlogit(
+  choice ~ 0 +
+    NONE +
+    ads_2 + ads_3 +
+    quality_2 + quality_3 +
+    streams_2 + streams_3 +
+    content_2 + content_3 +
+    price_mc,
+  data = choice_data
+)
+
+summary(mnl1)
+
+# Restricted (price-only) model
+mnl0 <- mlogit(
+  choice ~ 0 + NONE + price_mc,
+  data = choice_data
+)
+
+# Likelihood ratio test
+lmtest::lrtest(mnl0, mnl1)
+
+```
+
+```{r}
+# --- Part-worth utilities table (MNL) ---
+
+coefs <- coef(mnl1)
+
+pw_df <- data.frame(
+  Level = c(
+    "NONE (opt-out intercept)",
+    "Ads: With Ads", "Ads: Limited Ads", "Ads: Ad-free",
+    "Quality: HD 720p", "Quality: Full HD 1080p", "Quality: 4K HDR",
+    "Streams: 1 screen", "Streams: 2 screens", "Streams: 4 screens",
+    "Content: Licensed Only", "Content: Originals & Licensed", "Content: Exclusive Originals",
+    "Price (per 1€ from mean)"
+  ),
+  Attribute = c(
+    "NONE",
+    rep("Ads", 3),
+    rep("Video Quality", 3),
+    rep("Simultaneous Streams", 3),
+    rep("Content Type", 3),
+    "Price"
+  ),
+  Utility = c(
+    coefs["NONE"],
+
+    # Ads ref level (With Ads) = -(ads_2 + ads_3)
+    -(coefs["ads_2"] + coefs["ads_3"]),
+    coefs["ads_2"],
+    coefs["ads_3"],
+
+    # Quality ref (HD) = -(quality_2 + quality_3)
+    -(coefs["quality_2"] + coefs["quality_3"]),
+    coefs["quality_2"],
+    coefs["quality_3"],
+
+    # Streams ref (1 screen) = -(streams_2 + streams_3)
+    -(coefs["streams_2"] + coefs["streams_3"]),
+    coefs["streams_2"],
+    coefs["streams_3"],
+
+    # Content ref (Licensed) = -(content_2 + content_3)
+    -(coefs["content_2"] + coefs["content_3"]),
+    coefs["content_2"],
+    coefs["content_3"],
+
+    coefs["price_mc"]
+  )
+)
+
+pw_df
+
+```
+```{r}
+# --- RAI (MNL) ---
+
+# Helper: range per attribute (max-min)
+rai_ranges <- pw_df %>%
+  filter(Attribute %in% c("Ads","Video Quality","Simultaneous Streams","Content Type")) %>%
+  group_by(Attribute) %>%
+  summarise(Range = max(Utility) - min(Utility), .groups = "drop")
+
+# Price importance: use observed price range in your design * |beta_price|
+price_levels <- sort(unique(cbc$Price[cbc$Price != 0]))
+price_range  <- max(price_levels) - min(price_levels)
+price_beta   <- pw_df %>% filter(Attribute == "Price") %>% pull(Utility)
+price_imp    <- abs(price_beta) * price_range
+
+rai_tbl <- rai_ranges %>%
+  bind_rows(data.frame(Attribute = "Price", Range = price_imp)) %>%
+  mutate(RAI = 100 * Range / sum(Range)) %>%
+  arrange(desc(RAI))
+
+rai_tbl
+
+```
+```{r}
+# --- WTP (MNL): -beta_k / beta_price ---
+
+beta_price <- coefs["price_mc"]
+
+wtp_df <- pw_df %>%
+  filter(Attribute %in% c("NONE","Ads","Video Quality","Simultaneous Streams","Content Type")) %>%
+  mutate(
+    WTP = -Utility / beta_price
+  )
+
+wtp_df
+
+```
+```{r}
+# --- WTP table (MNL) + tidy labels for plotting ---
+
+coefs <- coef(mnl1)
+beta_price <- coefs["price_mc"]
+
+wtp_plot <- pw_df %>%
+  filter(Attribute %in% c("Ads","Video Quality","Simultaneous Streams","Content Type")) %>%
+  mutate(
+    WTP = -Utility / beta_price,
+    # nicer label for plotting
+    LevelLabel = gsub("^Ads: |^Quality: |^Streams: |^Content: ", "", Level)
+  )
+
+# Optional: include NONE as its own (separate plot later)
+wtp_none <- pw_df %>%
+  filter(Attribute == "NONE") %>%
+  mutate(WTP = -Utility / beta_price)
+
+wtp_plot %>% head()
+
+```
+```{r}
+# --- Plot 1: WTP by attribute (facets) ---
+
+library(ggplot2)
+
+ggplot(
+  wtp_plot %>% mutate(LevelLabel = factor(LevelLabel, levels = rev(unique(LevelLabel)))),
+  aes(x = WTP, y = LevelLabel)
+) +
+  geom_col() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  facet_wrap(~ Attribute, scales = "free_y") +
+  labs(
+    title = "Willingness-to-Pay by Attribute Level (MNL)",
+    subtitle = "WTP computed as -part-worth / price coefficient (price mean-centered)",
+    x = "WTP (in € relative to attribute mean)",
+    y = NULL
+  ) +
+  theme_minimal()
+
+```
+
+# HB Analysis (Individual Level)
+✓ Loaded pre-computed HB utilities from Tab 2
+
+✓ Calculated population means and SDs for all part-worths
+
+✓ Reconstructed reference level utilities
+
+✓ Computed individual-level RAI, then averaged
+
+✓ Calculated individual-level WTP, then averaged
+```{r}
+# Ensure package is loaded
+if (!requireNamespace("ChoiceModelR", quietly = TRUE)) install.packages("ChoiceModelR")
+
+# Build "choices" vector in the format ChoiceModelR expects:
+# For each (id, task): [chosen_alt, 0, 0, ...] of length = number of alts
+indexes <- cbc_eff %>%
+  group_by(id, task) %>%
+  reframe(
+    ch = alt[choice == 1],
+    no = max(alt),
+    .groups = "drop"
+  )
+
+choices_vec <- unname(unlist(purrr::map(seq_len(nrow(indexes)), function(x) {
+  c(indexes$ch[x], rep(0, times = indexes$no[x] - 1))
+})))
+
+# Design matrix for HB (keep consistent ordering)
+param_names <- c(
+  "ads_2","ads_3",
+  "quality_2","quality_3",
+  "streams_2","streams_3",
+  "content_2","content_3",
+  "price_mc","NONE"
+)
+
+dm <- cbc_eff %>%
+  mutate(choices = choices_vec) %>%
+  select(id, task, alt, all_of(param_names), choices) %>%
+  as.data.frame() %>%
+  # ChoiceModelR wants task = 1..T within each id (safe rebuild)
+  mutate(task = cumsum(c(1, diff(alt) < 0)), .by = id)
+
+n_params <- length(param_names)
+cat("Parameters to estimate:", n_params, "\n")
+cat("Design matrix dimensions:", nrow(dm), "x", ncol(dm), "\n")
+
+# Quick sanity checks (one choice per task)
+stopifnot(all(tapply(dm$choices != 0, list(dm$id, dm$task), sum) == 1))
+
+```
+```{r}
+
+dir.create("hbmnl", showWarnings = FALSE)
+
+set.seed(42)
+hb_out <- ChoiceModelR::choicemodelr(
+  data = dm,
+  xcoding = rep(1, times = n_params),
+  mcmc = list(R = 20000, use = 10000),
+  options = list(none = FALSE, save = TRUE, keep = 10),
+  directory = "hbmnl"
+)
+
+```
+```{r}
+# Keep only the 10 parameter draws we care about
+param_names <- c(
+  "ads_2","ads_3",
+  "quality_2","quality_3",
+  "streams_2","streams_3",
+  "content_2","content_3",
+  "price_mc","NONE"
+)
+
+beta_draws <- as.data.frame(hb_out$betadraw)[, seq_along(param_names), drop = FALSE]
+names(beta_draws) <- param_names
+
+beta_post <- beta_draws %>%
+  summarise(across(
+    everything(),
+    list(
+      mean = ~ mean(.x),
+      lo   = ~ quantile(.x, 0.025),
+      hi   = ~ quantile(.x, 0.975)
+    ),
+    .names = "{.col}__{.fn}"
+  )) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("param", "stat"),
+    names_sep = "__",
+    values_to = "value"
+  ) %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  arrange(param)
+
+beta_post
+
+```
+```{r}
+dim(hb_out$betadraw)
+head(as.data.frame(hb_out$betadraw)[, 1:12])
+
+```
+```{r}
+# --- Individual posterior mean betas (HB) ---
+
+# In your hb_out, individual-level draws are NOT in betadrawind.
+# They are either in compdraw, or we derive fit directly from like/loglike.
+
+str(hb_out$compdraw)
+
+# Try compdraw first (if stored as 3D array: iter x params x individuals)
+if (!is.null(hb_out$compdraw) && length(dim(hb_out$compdraw)) == 3) {
+  betas_ind <- apply(hb_out$compdraw, c(2, 3), mean)  # params x individuals
+  betas_ind <- t(betas_ind)                           # individuals x params
+  colnames(betas_ind) <- param_names
+} else {
+  betas_ind <- NULL
+}
+
+betas_ind %>% head()
+```
+```{r}
+# --- Predictive fit (RLH) from hb_out$like or hb_out$loglike ---
+
+L <- hb_out$like
+LL <- hb_out$loglike
+
+# Prefer 'like' if it exists; otherwise use exp(loglike)
+if (!is.null(L)) {
+  # coerce to matrix if needed
+  if (is.vector(L)) L <- matrix(L, ncol = length(unique(dm$id)), byrow = TRUE)
+  if (is.list(L))   L <- do.call(rbind, L)
+} else if (!is.null(LL)) {
+  # loglike -> like
+  if (is.vector(LL)) LL <- matrix(LL, ncol = length(unique(dm$id)), byrow = TRUE)
+  if (is.list(LL))   LL <- do.call(rbind, LL)
+  L <- exp(LL)
+} else {
+  stop("Neither hb_out$like nor hb_out$loglike is available.")
+}
+
+# RLH per respondent = exp(mean(log(p_chosen))) over tasks
+rlh_ind <- apply(L, 2, function(x) exp(mean(log(pmax(x, 1e-12)))))
+
+mean(rlh_ind)
+hist(rlh_ind, breaks = 25, main = "HB RLH distribution", xlab = "RLH")
+
+```
+
+```{r}
+# --- HB part-worths + WTP (population mean) ---
+
+beta_pop <- colMeans(beta_draws)
+
+recon <- function(b) list(
+  Ads = c(WithAds = -(b["ads_2"] + b["ads_3"]), Limited = b["ads_2"], AdFree = b["ads_3"]),
+  Quality = c(HD = -(b["quality_2"] + b["quality_3"]), FullHD = b["quality_2"], K4HDR = b["quality_3"]),
+  Streams = c(One = -(b["streams_2"] + b["streams_3"]), Two = b["streams_2"], Four = b["streams_3"]),
+  Content = c(Licensed = -(b["content_2"] + b["content_3"]), Mixed = b["content_2"], Exclusive = b["content_3"])
+)
+
+lv <- recon(beta_pop)
+
+hb_pw <- data.frame(
+  Attribute = c(rep("Ads",3), rep("Quality",3), rep("Streams",3), rep("Content",3)),
+  Level = c(names(lv$Ads), names(lv$Quality), names(lv$Streams), names(lv$Content)),
+  Utility = c(lv$Ads, lv$Quality, lv$Streams, lv$Content)
+)
+
+hb_wtp <- transform(hb_pw, WTP = -Utility / beta_pop["price_mc"])
+hb_wtp
+
+```
+```{r}
+library(ggplot2)
+
+ggplot(hb_wtp, aes(x = WTP, y = reorder(Level, WTP))) +
+  geom_col() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  facet_wrap(~ Attribute, scales = "free_y") +
+  labs(title = "HB WTP (Population Mean)", x = "WTP (€)", y = NULL) +
+  theme_minimal()
+
+```
+# trial 2:
+```{r}
+# --- HB 8.1: Prepare data for ChoiceModelR ---
+
+# Parameter order MUST match your design matrix columns
+param_names <- c(
+  "ads_2","ads_3",
+  "quality_2","quality_3",
+  "streams_2","streams_3",
+  "content_2","content_3",
+  "price_mc","NONE"
+)
+
+# Build choices vector: for each (id, task) => [chosen_alt, 0, 0, 0 ...]
+indexes <- cbc_eff %>%
+  group_by(id, task) %>%
+  reframe(
+    ch = alt[choice == 1],
+    no = max(alt),
+    .groups = "drop"
+  )
+
+choices_vec <- unname(unlist(purrr::map(seq_len(nrow(indexes)), function(x) {
+  c(indexes$ch[x], rep(0, times = indexes$no[x] - 1))
+})))
+
+# Build design matrix for HB
+dm <- cbc_eff %>%
+  mutate(choices = choices_vec) %>%
+  select(id, task, alt, all_of(param_names), choices) %>%
+  as.data.frame() %>%
+  # ensure task is 1..T inside each id (robust rebuild)
+  mutate(task = cumsum(c(1, diff(alt) < 0)), .by = id)
+
+n_params <- length(param_names)
+cat("HB params:", n_params, "\n")
+cat("DM dims:", nrow(dm), "x", ncol(dm), "\n")
+
+# sanity: exactly 1 chosen alternative per respondent-task
+stopifnot(all(tapply(dm$choices != 0, list(dm$id, dm$task), sum) == 1))
+
+```
+```{r}
+# --- HB 8.2: Run HB-MNL ---
+
+dir.create("hbmnl", showWarnings = FALSE)
+
+set.seed(42)
+hb_out <- ChoiceModelR::choicemodelr(
+  data = dm,
+  xcoding = rep(1, times = n_params),
+  mcmc = list(R = 20000, use = 10000),
+  options = list(none = FALSE, save = TRUE, keep = 10),
+  directory = "hbmnl"
+)
+
+```
+```{r}
+# --- HB 8.3: Individual-level betas (posterior means) ---
+
+# hb_out$betadraw is a 3D array: individuals x parameters x draws
+# Take mean across draws
+betas_ind <- apply(hb_out$betadraw, c(1, 2), mean)
+
+# Name columns in the same order as dm
+colnames(betas_ind) <- param_names
+
+cat("Individual betas matrix:", nrow(betas_ind), "respondents x",
+    ncol(betas_ind), "parameters\n")
+head(betas_ind)
+
+```
+
+```{r}
+# --- HB 8.4: Population means + SDs, with reference reconstruction ---
+
+hb_means <- colMeans(betas_ind)
+hb_sds   <- apply(betas_ind, 2, sd)
+
+hb_pw <- data.frame(
+  Level = c(
+    "With Ads","Limited Ads","Ad-free",
+    "HD 720p","Full HD 1080p","4K HDR",
+    "1 screen","2 screens","4 screens",
+    "Licensed Only","Originals & Licensed","Exclusive Originals",
+    "Price (per €1)","NONE"
+  ),
+  Attribute = c(
+    rep("Ads", 3),
+    rep("Video Quality", 3),
+    rep("Simultaneous Streams", 3),
+    rep("Content Type", 3),
+    "Price",""
+  ),
+  Mean = c(
+    -(hb_means["ads_2"] + hb_means["ads_3"]),
+    hb_means["ads_2"], hb_means["ads_3"],
+    -(hb_means["quality_2"] + hb_means["quality_3"]),
+    hb_means["quality_2"], hb_means["quality_3"],
+    -(hb_means["streams_2"] + hb_means["streams_3"]),
+    hb_means["streams_2"], hb_means["streams_3"],
+    -(hb_means["content_2"] + hb_means["content_3"]),
+    hb_means["content_2"], hb_means["content_3"],
+    hb_means["price_mc"],
+    hb_means["NONE"]
+  ),
+  SD = c(
+    sd(-(betas_ind[, "ads_2"] + betas_ind[, "ads_3"])),
+    hb_sds["ads_2"], hb_sds["ads_3"],
+    sd(-(betas_ind[, "quality_2"] + betas_ind[, "quality_3"])),
+    hb_sds["quality_2"], hb_sds["quality_3"],
+    sd(-(betas_ind[, "streams_2"] + betas_ind[, "streams_3"])),
+    hb_sds["streams_2"], hb_sds["streams_3"],
+    sd(-(betas_ind[, "content_2"] + betas_ind[, "content_3"])),
+    hb_sds["content_2"], hb_sds["content_3"],
+    hb_sds["price_mc"],
+    hb_sds["NONE"]
+  )
+)
+
+hb_pw
+
+```
+```{r}
+# --- HB 8.5: Individual-level RAI ---
+
+# Helper: compute range for an attribute (3 levels; reference reconstructed)
+range3 <- function(b2, b3) {
+  lv1 <- -(b2 + b3)  # reference
+  rng <- max(c(lv1, b2, b3)) - min(c(lv1, b2, b3))
+  rng
+}
+
+rai_ind <- data.frame(
+  record_id = unique(cbc_eff$record_id) %||% unique(cbc_eff$id),  # safe if you kept record_id
+  Ads = apply(betas_ind, 1, \(r) range3(r["ads_2"], r["ads_3"])),
+  Quality = apply(betas_ind, 1, \(r) range3(r["quality_2"], r["quality_3"])),
+  Streams = apply(betas_ind, 1, \(r) range3(r["streams_2"], r["streams_3"])),
+  Content = apply(betas_ind, 1, \(r) range3(r["content_2"], r["content_3"])),
+  Price = abs(betas_ind[, "price_mc"])  # linear price; use abs magnitude for importance
+)
+
+rai_ind <- rai_ind %>%
+  mutate(total = Ads + Quality + Streams + Content + Price) %>%
+  mutate(
+    Ads = 100 * Ads / total,
+    Quality = 100 * Quality / total,
+    Streams = 100 * Streams / total,
+    Content = 100 * Content / total,
+    Price = 100 * Price / total
+  )
+
+rai_avg <- rai_ind %>%
+  summarise(across(c(Ads, Quality, Streams, Content, Price), ~ round(mean(.x), 1)))
+
+rai_avg
+
+```
+```{r}
+# --- HB 8.6: Individual-level WTP (per respondent), then average ---
+
+# WTP(level) = - beta_level / beta_price
+# reconstruct reference level beta first, per respondent
+
+get_ref <- function(b2, b3) -(b2 + b3)
+
+wtp_ind <- data.frame(
+  id = 1:nrow(betas_ind),
+  ads_with_ads = -get_ref(betas_ind[, "ads_2"], betas_ind[, "ads_3"]) / betas_ind[, "price_mc"],
+  ads_limited  = -betas_ind[, "ads_2"] / betas_ind[, "price_mc"],
+  ads_adfree   = -betas_ind[, "ads_3"] / betas_ind[, "price_mc"],
+
+  q_hd         = -get_ref(betas_ind[, "quality_2"], betas_ind[, "quality_3"]) / betas_ind[, "price_mc"],
+  q_fullhd     = -betas_ind[, "quality_2"] / betas_ind[, "price_mc"],
+  q_4k         = -betas_ind[, "quality_3"] / betas_ind[, "price_mc"],
+
+  s_1          = -get_ref(betas_ind[, "streams_2"], betas_ind[, "streams_3"]) / betas_ind[, "price_mc"],
+  s_2          = -betas_ind[, "streams_2"] / betas_ind[, "price_mc"],
+  s_4          = -betas_ind[, "streams_3"] / betas_ind[, "price_mc"],
+
+  c_licensed   = -get_ref(betas_ind[, "content_2"], betas_ind[, "content_3"]) / betas_ind[, "price_mc"],
+  c_mixed      = -betas_ind[, "content_2"] / betas_ind[, "price_mc"],
+  c_exclusive  = -betas_ind[, "content_3"] / betas_ind[, "price_mc"]
+)
+
+wtp_avg <- wtp_ind %>%
+  summarise(across(-id, ~ round(mean(.x, na.rm = TRUE), 2)))
+
+wtp_avg
+
+```
+
+# Holdout Task Validation
+✓ Defined fixed holdout profiles (3 alternatives)
+
+✓ Computed predicted utilities for holdout using HB
+
+✓ Hit Rate: % of correct predictions
+
+✓ Mean Hit Probability: Average predicted prob for chosen alternative
+
+✓ Mean Absolute Error (MAE): |Predicted share - Actual share|
+
+```{r}
+# --- Holdout 9.1: Predicted utilities (HB, individual-level) ---
+
+# You need mnl_prob() exactly once (if you don't have it earlier)
+log_sum_exp <- function(x) {
+  cc <- max(x)
+  cc + log(sum(exp(x - cc)))
+}
+mnl_prob <- function(x) exp(x - log_sum_exp(x))
+
+mw_price <- mean(cbc$Price[cbc$Price != 0])  # or use your cleaned CBC price column
+
+holdout_dm <- data.frame(
+  ads_2     = c( 1, -1, -1, 0),   # Limited Ads / Ad-free / With Ads / None
+  ads_3     = c(-1,  1, -1, 0),
+  quality_2 = c( 1, -1, -1, 0),   # Full HD / 4K / HD / None
+  quality_3 = c(-1,  1, -1, 0),
+  streams_2 = c( 1, -1, -1, 0),   # 2 / 4 / 1 / None
+  streams_3 = c(-1,  1, -1, 0),
+  content_2 = c( 1, -1, -1, 0),   # Mixed / Exclusive / Licensed / None
+  content_3 = c(-1,  1, -1, 0),
+  price_mc  = c(7.99 - mw_price, 12.99 - mw_price, 4.99 - mw_price, 0),
+  NONE      = c(0, 0, 0, 1)
+)
+
+holdout_utils <- as.data.frame(betas_ind %*% t(as.matrix(holdout_dm))) %>%
+  setNames(c("A","B","C","None"))
+
+```
+
+```{r}
+# --- Holdout 9.2: Actual choices + validation metrics ---
+
+holdout_actual <- survey_matched %>%   # must exist from your earlier matching step
+  mutate(
+    holdout_choice = case_when(
+      grepl("€7.99", holdout)  ~ 1L,
+      grepl("€12.99", holdout) ~ 2L,
+      grepl("€4.99", holdout)  ~ 3L,
+      TRUE                     ~ 4L
+    )
+  ) %>%
+  pull(holdout_choice)
+
+holdout_utils$actual <- holdout_actual
+
+# Hit rate
+predicted_choice <- apply(holdout_utils[, 1:4], 1, which.max)
+hit_rate <- round(mean(predicted_choice == holdout_utils$actual) * 100, 2)
+hit_rate
+
+# Mean hit probability
+ch_probs <- as.data.frame(t(apply(holdout_utils[, 1:4], 1, mnl_prob)))
+names(ch_probs) <- c("A","B","C","None")
+ch_probs$actual_label <- c("A","B","C","None")[holdout_utils$actual]
+
+mean_hit_prob <- ch_probs %>%
+  rowwise() %>%
+  mutate(hit_prob = get(actual_label)) %>%
+  ungroup() %>%
+  summarise(mhp = round(mean(hit_prob) * 100, 2)) %>%
+  pull(mhp)
+
+mean_hit_prob
+
+# MAE in shares
+actual_shares <- sapply(1:4, \(x) mean(holdout_utils$actual == x))
+predicted_shares <- colMeans(ch_probs[, 1:4])
+mae <- round(mean(abs(actual_shares - predicted_shares)) * 100, 2)
+mae
+
+```
+
+```{r}
+# --- Subgroups 10: Merge RAI with survey + compare groups ---
+
+rai_long <- rai_ind %>%
+  select(record_id, Ads, Quality, Streams, Content, Price) %>%
+  pivot_longer(cols = -record_id, names_to = "Attribute", values_to = "RAI") %>%
+  left_join(survey_matched %>% select(record_id, gender, ott_use), by = "record_id")
+
+# Gender
+rai_gender <- rai_long %>%
+  filter(!is.na(gender)) %>%
+  group_by(gender, Attribute) %>%
+  summarise(
+    Mean = round(mean(RAI), 1),
+    SD   = round(sd(RAI), 1),
+    .groups = "drop"
+  )
+
+rai_gender
+
+# OTT usage (adapt labels if your column differs)
+rai_ott <- rai_long %>%
+  filter(!is.na(ott_use)) %>%
+  mutate(ott_group = ifelse(ott_use == "No", "Non-user", "User")) %>%
+  group_by(ott_group, Attribute) %>%
+  summarise(
+    Mean = round(mean(RAI), 1),
+    SD   = round(sd(RAI), 1),
+    .groups = "drop"
+  )
+
+rai_ott
+
+```
+
+# Subgroup Analysis
+✓ Attribute importance by Gender (Male vs Female)
+
+✓ Attribute importance by OTT Usage (Self-pay vs Shared vs Non-subscriber)
+```{r}
+# --- 10.1: RAI long + merge demographics/usage (ROBUST) ---
+
+# 1) Pick the correct ID column (record_id preferred, else id)
+id_col <- if ("record_id" %in% names(survey_matched)) "record_id" else "id"
+
+# 2) Find an OTT usage/payment column automatically
+ott_candidates <- c(
+  "ott_payment","OTT_payment","payment","payment_type","pay_type",
+  "subscription_payment","subscription_type","ott_use","OTT_use",
+  "account_sharing","shared_account","sharing","who_pays","payer"
+)
+
+ott_col <- ott_candidates[ott_candidates %in% names(survey_matched)][1]
+
+# If still not found, create a placeholder so code won't break
+if (is.na(ott_col)) {
+  survey_matched$ott_payment <- NA
+  ott_col <- "ott_payment"
+} else {
+  survey_matched <- survey_matched %>% rename(ott_payment = all_of(ott_col))
+}
+
+# 3) Gender column: if yours isn't exactly "gender", auto-detect too
+gender_candidates <- c("gender","Gender","sex","Sex")
+gender_col <- gender_candidates[gender_candidates %in% names(survey_matched)][1]
+
+if (is.na(gender_col)) {
+  survey_matched$gender <- NA
+  gender_col <- "gender"
+} else {
+  survey_matched <- survey_matched %>% rename(gender = all_of(gender_col))
+}
+
+# 4) Join
+rai_w_survey <- rai_ind %>%
+  left_join(
+    survey_matched %>%
+      select(all_of(id_col), gender, ott_payment) %>%
+      rename(record_id = all_of(id_col)),
+    by = "record_id"
+  )
+
+# 5) Long format
+rai_long <- rai_w_survey %>%
+  select(record_id, gender, ott_payment, Ads, Quality, Streams, Content, Price) %>%
+  pivot_longer(
+    cols = c(Ads, Quality, Streams, Content, Price),
+    names_to = "Attribute",
+    values_to = "RAI"
+  )
+
+# Quick sanity check
+table(is.na(rai_long$ott_payment))
+
+```
+
+```{r}
+rai_gender_summary <- rai_long %>%
+  filter(gender %in% c("Male","Female")) %>%
+  group_by(gender, Attribute) %>%
+  summarise(
+    Mean = round(mean(RAI, na.rm = TRUE), 1),
+    SD   = round(sd(RAI, na.rm = TRUE), 1),
+    N    = sum(!is.na(RAI)),
+    .groups = "drop"
+  )
+
+rai_gender_summary
+
+```
+```{r}
+rai_long2 <- rai_long %>%
+  mutate(
+    ott_group = case_when(
+      str_detect(tolower(as.character(ott_payment)), "self|own|pay") ~ "Self-pay",
+      str_detect(tolower(as.character(ott_payment)), "share|family|friend") ~ "Shared",
+      str_detect(tolower(as.character(ott_payment)), "non|none|no") ~ "Non-subscriber",
+      TRUE ~ NA_character_
+    )
+  )
+
+rai_ott_summary <- rai_long2 %>%
+  filter(!is.na(ott_group)) %>%
+  group_by(ott_group, Attribute) %>%
+  summarise(
+    Mean = round(mean(RAI, na.rm = TRUE), 1),
+    SD   = round(sd(RAI, na.rm = TRUE), 1),
+    N    = sum(!is.na(RAI)),
+    .groups = "drop"
+  )
+
+rai_ott_summary
+
+```
+```{r}
+names(survey_matched)
+
+```
+From your table:
+
+Ads is #1 for both genders:
+Female: 36.4%; Male: 32.6%
+
+Biggest difference = Video Quality
+
+Female: 16.5%;
+
+Male: 22.5% → men care noticeably more about quality
+
+Content + Streams are similar (20–22% range)
+
+Price is low for both (~4–5%) → your respondents are relatively feature-driven vs price-driven in this experiment.
+
+That’s a clean narrative.
+
+OTT usage groups
+
+You have at least:
+
+Non-subscriber (N=8) (small group → treat cautiously)
+
+Self-pay (N=46)
+
+(Your table shows 15 rows = implies there is also a Shared group on the next page.)
+
+From your table:
+
+Ads is #1 for both genders
+
+Female: 36.4%
+
+Male: 32.6%
+
+Biggest difference = Video Quality
+
+Female: 16.5%
+
+Male: 22.5% → men care noticeably more about quality
+
+Content + Streams are similar (20–22% range)
+
+Price is low for both (~4–5%) → your respondents are relatively feature-driven vs price-driven in this experiment.
+
+That’s a clean narrative.
+
+OTT usage groups
+
+You have at least:
+
+* Non-subscriber (N=8) (small group → treat cautiously)
+
+* Self-pay (N=46)
+
+(Your table shows 15 rows = implies there is also a Shared group on the next page.)
+
+Pattern so far:
+
+* Self-pay: Ads highest (36.2%), Quality second (21.8%), Content (19.5), Streams (18.7), Price (3.8)
+
+* Non-subscriber: more balanced (Ads 31.6, Streams 21.5, Content 21.0, Quality 20.4, Price 5.5) — but again N=8, so don’t overclaim.
+
+```{r}
+rai_gender_wide <- rai_gender_summary %>%
+  select(gender, Attribute, Mean) %>%
+  pivot_wider(names_from = gender, values_from = Mean) %>%
+  arrange(desc(Female))   # or arrange(desc(Male))
+
+rai_gender_wide
+
+rai_ott_wide <- rai_ott_summary %>%
+  select(ott_group, Attribute, Mean) %>%
+  pivot_wider(names_from = ott_group, values_from = Mean)
+
+rai_ott_wide
+
+```
+
+
+# Market Simulations
+✓ Defined 5 product scenarios
+
+✓ Calculated market shares using MNL (aggregate)
+
+✓ Calculated market shares using HB-MNL (individual-level averaged)
+
+✓ Scenario analysis: "What if we remove the Family Plan?"
+
+```{r}
+# --- 11.1: Helpers ---
+log_sum_exp <- function(x) {
+  cc <- max(x)
+  cc + log(sum(exp(x - cc)))
+}
+mnl_prob <- function(u) exp(u - log_sum_exp(u))
+
+# Ensure mw_price exists (mean of raw price used in your estimation)
+if (!exists("mw_price")) {
+  # Try common sources; pick the one you have
+  if (exists("cbc_eff") && "Price" %in% names(cbc_eff)) {
+    mw_price <- mean(cbc_eff$Price, na.rm = TRUE)
+  } else if (exists("cbc") && "Price" %in% names(cbc)) {
+    mw_price <- mean(cbc$Price, na.rm = TRUE)
+  } else {
+    stop("mw_price not found and couldn't infer from cbc_eff/cbc. Define mw_price manually.")
+  }
+}
+mw_price
+
+```
+
+```{r}
+# --- 11.2: Product scenarios (effects-coded) ---
+# param_names must be: ads_2 ads_3 quality_2 quality_3 streams_2 streams_3 content_2 content_3 price_mc NONE
+
+products <- data.frame(
+  Scenario = c(
+    "S1 Budget Basic",
+    "S2 Mid-Tier Standard",
+    "S3 Premium All-In",
+    "S4 Ad-Supported Value",
+    "S5 Family Plan",
+    "None (Opt-out)"
+  ),
+
+  ads_2     = c(-1,  1, -1, -1, -1, 0),
+  ads_3     = c(-1, -1,  1, -1,  1, 0),
+
+  quality_2 = c(-1,  1, -1,  1,  1, 0),
+  quality_3 = c(-1, -1,  1, -1, -1, 0),
+
+  streams_2 = c(-1,  1, -1,  1, -1, 0),
+  streams_3 = c(-1, -1,  1, -1,  1, 0),
+
+  content_2 = c(-1,  1, -1,  1,  1, 0),
+  content_3 = c(-1, -1,  1, -1, -1, 0),
+
+  # mean-centered price (raw price - mw_price)
+  price_mc  = c(4.99, 9.99, 14.99, 7.99, 12.99, 0) - mw_price,
+
+  NONE      = c(0,0,0,0,0,1),
+
+  stringsAsFactors = FALSE
+)
+
+X_prod <- as.matrix(products[, param_names])
+
+# quick check
+stopifnot(all(colnames(X_prod) == param_names))
+
+```
+
+```{r}
+# --- 11.3: Aggregate MNL shares ---
+beta_mnl <- coef(mnl1)
+
+u_mnl <- as.vector(X_prod %*% beta_mnl)
+p_mnl <- mnl_prob(u_mnl) * 100
+
+mnl_sim <- data.frame(
+  Scenario = products$Scenario,
+  Utility  = round(u_mnl, 3),
+  SharePct = round(p_mnl, 1)
+) %>% arrange(desc(SharePct))
+
+mnl_sim
+
+```
+
+```{r}
+# --- 11.4: HB shares (average of individual choice probs) ---
+u_hb <- betas_ind %*% t(X_prod)          # N x J utilities
+colnames(u_hb) <- products$Scenario
+
+p_hb <- t(apply(u_hb, 1, mnl_prob))      # N x J probabilities
+colnames(p_hb) <- products$Scenario
+
+hb_sim <- data.frame(
+  Scenario = products$Scenario,
+  MeanSharePct = round(colMeans(p_hb) * 100, 1),
+  SDSharePct   = round(apply(p_hb, 2, sd) * 100, 1)
+) %>% arrange(desc(MeanSharePct))
+
+hb_sim
+
+```
+
+```{r}
+# --- 11.5: Compare MNL vs HB ---
+market_compare <- mnl_sim %>%
+  select(Scenario, MNL_SharePct = SharePct) %>%
+  left_join(
+    hb_sim %>% select(Scenario, HB_SharePct = MeanSharePct),
+    by = "Scenario"
+  ) %>%
+  mutate(Diff_HB_minus_MNL = round(HB_SharePct - MNL_SharePct, 1)) %>%
+  arrange(desc(HB_SharePct))
+
+market_compare
+
+```
+```{r}
+# --- 11.6: Remove Family Plan scenario ---
+keep <- products$Scenario != "S5 Family Plan"
+
+products_rm <- products[keep, ]
+X_rm <- as.matrix(products_rm[, param_names])
+
+# MNL re-run
+u_mnl_rm <- as.vector(X_rm %*% beta_mnl)
+p_mnl_rm <- mnl_prob(u_mnl_rm) * 100
+
+mnl_no_family <- data.frame(
+  Scenario = products_rm$Scenario,
+  SharePct_NoFamily = round(p_mnl_rm, 1)
+) %>% arrange(desc(SharePct_NoFamily))
+
+mnl_no_family
+
+# HB re-run
+u_hb_rm <- betas_ind %*% t(X_rm)
+colnames(u_hb_rm) <- products_rm$Scenario
+p_hb_rm <- t(apply(u_hb_rm, 1, mnl_prob))
+colnames(p_hb_rm) <- products_rm$Scenario
+
+hb_no_family <- data.frame(
+  Scenario = products_rm$Scenario,
+  MeanSharePct_NoFamily = round(colMeans(p_hb_rm) * 100, 1),
+  SDSharePct_NoFamily   = round(apply(p_hb_rm, 2, sd) * 100, 1)
+) %>% arrange(desc(MeanSharePct_NoFamily))
+
+hb_no_family
+
+```
+
+```{r}
+library(ggplot2)
+
+plot_df <- market_compare %>%
+  pivot_longer(cols = c(MNL_SharePct, HB_SharePct),
+               names_to = "Model", values_to = "SharePct") %>%
+  mutate(Model = recode(Model, MNL_SharePct = "MNL (Aggregate)", HB_SharePct = "HB (Avg Individual)"))
+
+ggplot(plot_df, aes(x = reorder(Scenario, SharePct), y = SharePct, fill = Model)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(title = "Market Share Simulation: MNL vs HB", x = NULL, y = "Predicted Market Share (%)") +
+  theme_minimal()
+
+```
+BUNCH OF VISUALISATION OPTIONS:
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Consistent color palette
+palette_main <- c(
+  "S1 Budget Basic" = "#6C8EBF",
+  "S2 Mid-Tier Standard" = "#4CAF50",
+  "S3 Premium All-In" = "#9C27B0",
+  "S4 Ad-Supported Value" = "#FF9800",
+  "S5 Family Plan" = "#E91E63",
+  "None (Opt-out)" = "#9E9E9E"
+)
+
+model_palette <- c(
+  "MNL (Aggregate)" = "#1F77B4",
+  "HB (Individual-Level)" = "#D62728"
+)
+
+```
+
+```{r}
+plot_df <- market_compare %>%
+  pivot_longer(
+    cols = c(MNL_SharePct, HB_SharePct),
+    names_to = "Model",
+    values_to = "SharePct"
+  ) %>%
+  mutate(Model = recode(Model,
+                        MNL_SharePct = "MNL (Aggregate)",
+                        HB_SharePct = "HB (Individual-Level)"))
+
+ggplot(plot_df, aes(x = reorder(Scenario, SharePct), y = SharePct, fill = Model)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  scale_fill_manual(values = model_palette) +
+  coord_flip() +
+  labs(title = "Market Share Simulation: MNL vs HB",
+       x = NULL,
+       y = "Predicted Market Share (%)",
+       fill = "Model") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+
+
+```
+```{r}
+ggplot(hb_sim, aes(x = reorder(Scenario, MeanSharePct), y = MeanSharePct, fill = Scenario)) +
+  geom_col(width = 0.7) +
+  geom_errorbar(aes(ymin = MeanSharePct - SDSharePct,
+                    ymax = MeanSharePct + SDSharePct),
+                width = 0.2,
+                color = "black") +
+  scale_fill_manual(values = palette_main) +
+  coord_flip() +
+  labs(title = "HB Market Share with Individual-Level Variation",
+       x = NULL,
+       y = "Mean Predicted Share (%)") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+
+```
+```{r}
+# remove family plan
+before_after <- hb_sim %>%
+  select(Scenario, Before = MeanSharePct) %>%
+  left_join(
+    hb_no_family %>%
+      select(Scenario, After = MeanSharePct_NoFamily),
+    by = "Scenario"
+  ) %>%
+  filter(!is.na(After))
+
+before_after_long <- before_after %>%
+  pivot_longer(cols = c(Before, After),
+               names_to = "Condition",
+               values_to = "Share")
+
+ggplot(before_after_long,
+       aes(x = reorder(Scenario, Share), y = Share, fill = Condition)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = c("Before" = "#607D8B",
+                               "After" = "#F44336")) +
+  coord_flip() +
+  labs(title = "Impact of Removing Family Plan",
+       x = NULL,
+       y = "Predicted Market Share (%)") +
+  theme_minimal(base_size = 13)
+
+```
+```{r}
+hb_structure <- hb_sim %>%
+  mutate(Total = sum(MeanSharePct),
+         ShareNorm = MeanSharePct / Total * 100)
+
+ggplot(hb_structure,
+       aes(x = "", y = ShareNorm, fill = Scenario)) +
+  geom_col(width = 0.6) +
+  scale_fill_manual(values = palette_main) +
+  labs(title = "Simulated Market Structure (HB Model)",
+       x = NULL,
+       y = "Market Share (%)") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+```
+
+```{r}
+products$Price <- c(4.99, 9.99, 14.99, 7.99, 12.99, 0)
+
+profit_df <- hb_sim %>%
+  left_join(products %>% select(Scenario, Price), by = "Scenario") %>%
+  mutate(ExpectedRevenueIndex = MeanSharePct * Price)
+
+ggplot(profit_df,
+       aes(x = reorder(Scenario, ExpectedRevenueIndex),
+           y = ExpectedRevenueIndex,
+           fill = Scenario)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(values = palette_main) +
+  coord_flip() +
+  labs(title = "Revenue Potential Index (Share × Price)",
+       x = NULL,
+       y = "Revenue Index") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+
+```
+# additional analysis
+
+Instead of clustering based on preferences, I will split people using demographic or behavioral variables (age, income, usage etc.) and compare their preferences. Going to examine if different types of people value different product attributes since that could be powerful in conjoint / WTP settings.
+
+## Heavy vs Light Users
+```{r}
+# ------------------------------------------------------------
+# 7.2 Heavy vs Light Users (HB individual-level segmentation)
+# ------------------------------------------------------------
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 1) Merge respondent survey data + individual HB betas
+# NOTE: This assumes betas_ind rows align with survey_matched row order.
+# If you are NOT 100% sure, do NOT sort survey_matched before binding.
+hb_ind <- survey_matched %>%
+  dplyr::mutate(row_in_betas = dplyr::row_number()) %>%
+  dplyr::bind_cols(as.data.frame(betas_ind))
+
+# Basic sanity check
+stopifnot(nrow(hb_ind) == nrow(betas_ind))
+
+# 2) Define Heavy vs Light users (median split on hours_ott)
+med_hours <- median(hb_ind$hours_ott, na.rm = TRUE)
+
+hb_ind <- hb_ind %>%
+  dplyr::mutate(
+    usage_segment = dplyr::case_when(
+      is.na(hours_ott) ~ NA_character_,
+      hours_ott > med_hours ~ "Heavy",
+      TRUE ~ "Light"
+    )
+  )
+
+table(hb_ind$usage_segment, useNA = "ifany")
+
+# 3) Reconstruct full part-worth utilities (reference level = -(beta2 + beta3))
+# Works for effects coding where you estimated only level2 and level3.
+hb_ind <- hb_ind %>%
+  mutate(
+    # Ads levels
+    u_ads_with     = -(ads_2 + ads_3),
+    u_ads_limited  =  ads_2,
+    u_ads_adfree   =  ads_3,
+
+    # Quality levels
+    u_q_hd         = -(quality_2 + quality_3),
+    u_q_fhd        =  quality_2,
+    u_q_4k         =  quality_3,
+
+    # Streams levels
+    u_s_1          = -(streams_2 + streams_3),
+    u_s_2          =  streams_2,
+    u_s_4          =  streams_3,
+
+    # Content levels
+    u_c_licensed   = -(content_2 + content_3),
+    u_c_mixed      =  content_2,
+    u_c_exclusive  =  content_3
+  )
+
+# 4) Attribute importance = range within each attribute
+# Price importance proxy: abs(beta_price) * observed design price range
+hb_ind <- hb_ind %>%
+  mutate(
+    imp_ads     = pmax(u_ads_with, u_ads_limited, u_ads_adfree) - pmin(u_ads_with, u_ads_limited, u_ads_adfree),
+    imp_quality = pmax(u_q_hd, u_q_fhd, u_q_4k) - pmin(u_q_hd, u_q_fhd, u_q_4k),
+    imp_streams = pmax(u_s_1, u_s_2, u_s_4) - pmin(u_s_1, u_s_2, u_s_4),
+    imp_content = pmax(u_c_licensed, u_c_mixed, u_c_exclusive) - pmin(u_c_licensed, u_c_mixed, u_c_exclusive),
+    imp_price   = abs(price_mc) * (max(price_levels) - min(price_levels))
+  )
+
+# 5) WTP for key upgrades (in €)
+# WTP = -(delta utility) / beta_price
+# Guard against near-zero price coefficients
+hb_ind <- hb_ind %>%
+  mutate(
+    beta_p = ifelse(abs(price_mc) < 1e-6, NA, price_mc),
+
+    wtp_adfree_vs_with   = -(u_ads_adfree  - u_ads_with)    / beta_p,
+    wtp_4k_vs_hd         = -(u_q_4k        - u_q_hd)        / beta_p,
+    wtp_4screens_vs_1    = -(u_s_4         - u_s_1)         / beta_p,
+    wtp_excl_vs_lic      = -(u_c_exclusive - u_c_licensed)  / beta_p
+  )
+
+# 6) Segment summary table (means)
+seg_summary_usage <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  group_by(usage_segment) %>%
+  summarise(
+    n = n(),
+
+    # Price sensitivity: more negative = more price sensitive
+    price_beta_mean = mean(price_mc, na.rm = TRUE),
+
+    # Importance means
+    imp_ads_mean     = mean(imp_ads, na.rm = TRUE),
+    imp_quality_mean = mean(imp_quality, na.rm = TRUE),
+    imp_streams_mean = mean(imp_streams, na.rm = TRUE),
+    imp_content_mean = mean(imp_content, na.rm = TRUE),
+    imp_price_mean   = mean(imp_price, na.rm = TRUE),
+
+    # WTP means
+    wtp_adfree_mean   = mean(wtp_adfree_vs_with, na.rm = TRUE),
+    wtp_4k_mean       = mean(wtp_4k_vs_hd, na.rm = TRUE),
+    wtp_4screens_mean = mean(wtp_4screens_vs_1, na.rm = TRUE),
+    wtp_excl_mean     = mean(wtp_excl_vs_lic, na.rm = TRUE),
+
+    .groups = "drop"
+  )
+
+seg_summary_usage
+
+# 7) Quick significance checks (simple t-tests)
+# (If you want to be strict, check normality or use wilcox.test; but t-test is fine for reporting.)
+t.test(price_mc ~ usage_segment, data = hb_ind)
+t.test(imp_price ~ usage_segment, data = hb_ind)
+t.test(imp_quality ~ usage_segment, data = hb_ind)
+t.test(imp_content ~ usage_segment, data = hb_ind)
+
+t.test(wtp_4k_vs_hd ~ usage_segment, data = hb_ind)
+t.test(wtp_adfree_vs_with ~ usage_segment, data = hb_ind)
+t.test(wtp_excl_vs_lic ~ usage_segment, data = hb_ind)
+t.test(wtp_4screens_vs_1 ~ usage_segment, data = hb_ind)
+
+# 8) Visuals: Importance boxplots by segment
+imp_long_usage <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  select(usage_segment, imp_ads, imp_quality, imp_streams, imp_content, imp_price) %>%
+  pivot_longer(-usage_segment, names_to = "metric", values_to = "value")
+
+ggplot(imp_long_usage, aes(x = usage_segment, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "Heavy vs Light Users: Attribute Importance (HB-derived)",
+    x = NULL, y = "Importance (range-based)"
+  )
+
+# 9) Visuals: WTP boxplots by segment
+wtp_long_usage <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  select(usage_segment, wtp_adfree_vs_with, wtp_4k_vs_hd, wtp_4screens_vs_1, wtp_excl_vs_lic) %>%
+  pivot_longer(-usage_segment, names_to = "metric", values_to = "wtp")
+
+ggplot(wtp_long_usage, aes(x = usage_segment, y = wtp)) +
+  geom_boxplot() +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "Heavy vs Light Users: WTP for Premium Upgrades (HB-derived)",
+    x = NULL, y = "WTP (€)"
+  )
+
+
+```
+**Interpretation: ** 
+* Light users are more price sensitive on average; heavy users are slightly less price sensitive.
+
+* Heavy users show higher decision weight on plan structure (ads + multi-screen) than light users, suggesting they pay more attention to the “plan mechanics” of streaming rather than only the headline price.
+
+* Also, streams being higher for heavy users is very sensible: heavy users likely share accounts / use across devices.
+
+* considering the WTP is -change in utility/B_price then if someone’s price_mc is:
+
+  * close to 0 → WTP explodes to huge values
+
+  * positive → WTP signs get weird
+
+  * extremely small and noisy → you get nonsense like €344 for ad-free
+
+  * **Thus, right now, you should not make strong numeric WTP claims off those raw means.**
+
+* wtp_excl_vs_lic (exclusive vs licensed)
+
+  * Heavy mean: -1.64
+
+  * Light mean: 29.99
+
+  * p = 0.21 (not significant)
+  
+  * No statistically reliable difference in WTP for exclusive content between heavy and light users in this sample.
+  
+* wtp_4screens_vs_1 (4 screens vs 1)
+
+  * Heavy mean: 6.37
+
+  * Light mean: -122.29
+
+  * p = 0.338 (not significant)
+  
+  * Differences are not statistically significant, and the negative WTP for light users suggests the individual-level WTP estimates are dominated by noisy/near-zero price coefficients rather than true preference.
+  
+**need to fix this:**
+```{r}
+# ------------------------------------------------------------
+# 7.2 Heavy vs Light Users (HB individual-level segmentation)
+# Includes: importance + robust WTP (winsorized + medians) + tests + plots
+# ------------------------------------------------------------
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 1) Merge respondent survey data + individual HB betas
+# Assumption: betas_ind rows align with survey_matched row order used in HB estimation.
+hb_ind <- survey_matched %>%
+  dplyr::mutate(row_in_betas = dplyr::row_number()) %>%
+  dplyr::bind_cols(as.data.frame(betas_ind))
+
+stopifnot(nrow(hb_ind) == nrow(betas_ind))
+
+# 2) Define Heavy vs Light users (median split on hours_ott)
+med_hours <- median(hb_ind$hours_ott, na.rm = TRUE)
+
+hb_ind <- hb_ind %>%
+  dplyr::mutate(
+    usage_segment = dplyr::case_when(
+      is.na(hours_ott) ~ NA_character_,
+      hours_ott > med_hours ~ "Heavy",
+      TRUE ~ "Light"
+    )
+  )
+
+table(hb_ind$usage_segment, useNA = "ifany")
+
+# 3) Reconstruct full part-worth utilities (effects coding ref = -(beta2+beta3))
+hb_ind <- hb_ind %>%
+  mutate(
+    # Ads
+    u_ads_with     = -(ads_2 + ads_3),
+    u_ads_limited  =  ads_2,
+    u_ads_adfree   =  ads_3,
+
+    # Quality
+    u_q_hd         = -(quality_2 + quality_3),
+    u_q_fhd        =  quality_2,
+    u_q_4k         =  quality_3,
+
+    # Streams
+    u_s_1          = -(streams_2 + streams_3),
+    u_s_2          =  streams_2,
+    u_s_4          =  streams_3,
+
+    # Content
+    u_c_licensed   = -(content_2 + content_3),
+    u_c_mixed      =  content_2,
+    u_c_exclusive  =  content_3
+  )
+
+# 4) Attribute importance = within-attribute range
+# Price importance proxy: abs(beta_price) * observed design price range
+hb_ind <- hb_ind %>%
+  mutate(
+    imp_ads     = pmax(u_ads_with, u_ads_limited, u_ads_adfree) - pmin(u_ads_with, u_ads_limited, u_ads_adfree),
+    imp_quality = pmax(u_q_hd, u_q_fhd, u_q_4k) - pmin(u_q_hd, u_q_fhd, u_q_4k),
+    imp_streams = pmax(u_s_1, u_s_2, u_s_4) - pmin(u_s_1, u_s_2, u_s_4),
+    imp_content = pmax(u_c_licensed, u_c_mixed, u_c_exclusive) - pmin(u_c_licensed, u_c_mixed, u_c_exclusive),
+    imp_price   = abs(price_mc) * (max(price_levels) - min(price_levels))
+  )
+
+# 5) WTP for key upgrades (raw, can be unstable when price_mc is near 0)
+hb_ind <- hb_ind %>%
+  mutate(
+    beta_p = ifelse(abs(price_mc) < 1e-6, NA, price_mc),
+
+    wtp_adfree_vs_with_raw = -(u_ads_adfree  - u_ads_with)    / beta_p,
+    wtp_4k_vs_hd_raw       = -(u_q_4k        - u_q_hd)        / beta_p,
+    wtp_4screens_vs_1_raw  = -(u_s_4         - u_s_1)         / beta_p,
+    wtp_excl_vs_lic_raw    = -(u_c_exclusive - u_c_licensed)  / beta_p
+  )
+
+# 6) Robustify WTP: winsorize extremes + summarise medians
+winsor <- function(x, p = 0.02) {
+  q <- quantile(x, probs = c(p, 1 - p), na.rm = TRUE)
+  x <- pmin(pmax(x, q[1]), q[2])
+  x
+}
+
+hb_ind <- hb_ind %>%
+  mutate(
+    wtp_adfree_vs_with = winsor(wtp_adfree_vs_with_raw, 0.02),
+    wtp_4k_vs_hd       = winsor(wtp_4k_vs_hd_raw, 0.02),
+    wtp_4screens_vs_1  = winsor(wtp_4screens_vs_1_raw, 0.02),
+    wtp_excl_vs_lic    = winsor(wtp_excl_vs_lic_raw, 0.02)
+  )
+
+# 7) Segment summaries (importance means + WTP medians)
+seg_summary_usage <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  group_by(usage_segment) %>%
+  summarise(
+    n = n(),
+
+    # Price sensitivity: more negative = more sensitive
+    price_beta_mean = mean(price_mc, na.rm = TRUE),
+
+    # Importance means
+    imp_ads_mean     = mean(imp_ads, na.rm = TRUE),
+    imp_quality_mean = mean(imp_quality, na.rm = TRUE),
+    imp_streams_mean = mean(imp_streams, na.rm = TRUE),
+    imp_content_mean = mean(imp_content, na.rm = TRUE),
+    imp_price_mean   = mean(imp_price, na.rm = TRUE),
+
+    # Robust WTP (medians)
+    wtp_adfree_median   = median(wtp_adfree_vs_with, na.rm = TRUE),
+    wtp_4k_median       = median(wtp_4k_vs_hd, na.rm = TRUE),
+    wtp_4screens_median = median(wtp_4screens_vs_1, na.rm = TRUE),
+    wtp_excl_median     = median(wtp_excl_vs_lic, na.rm = TRUE),
+
+    .groups = "drop"
+  )
+
+seg_summary_usage
+
+# 8) Significance checks (t-tests)
+# Importance / price beta
+t.test(price_mc ~ usage_segment, data = hb_ind)
+t.test(imp_price ~ usage_segment, data = hb_ind)
+t.test(imp_ads ~ usage_segment, data = hb_ind)
+t.test(imp_streams ~ usage_segment, data = hb_ind)
+t.test(imp_quality ~ usage_segment, data = hb_ind)
+t.test(imp_content ~ usage_segment, data = hb_ind)
+
+# Robust WTP (winsorized)
+t.test(wtp_adfree_vs_with ~ usage_segment, data = hb_ind)
+t.test(wtp_4k_vs_hd ~ usage_segment, data = hb_ind)
+t.test(wtp_4screens_vs_1 ~ usage_segment, data = hb_ind)
+t.test(wtp_excl_vs_lic ~ usage_segment, data = hb_ind)
+
+# Optional: if WTP still looks non-normal / skewed, use Wilcoxon tests
+wilcox.test(wtp_adfree_vs_with ~ usage_segment, data = hb_ind)
+wilcox.test(wtp_4k_vs_hd ~ usage_segment, data = hb_ind)
+wilcox.test(wtp_4screens_vs_1 ~ usage_segment, data = hb_ind)
+wilcox.test(wtp_excl_vs_lic ~ usage_segment, data = hb_ind)
+
+# 9) Visual: Importance boxplots by segment
+imp_long_usage <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  select(usage_segment, imp_ads, imp_quality, imp_streams, imp_content, imp_price) %>%
+  pivot_longer(-usage_segment, names_to = "metric", values_to = "value")
+
+ggplot(imp_long_usage, aes(x = usage_segment, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "Heavy vs Light Users: Attribute Importance (HB-derived)",
+    x = NULL, y = "Importance (range-based)"
+  )
+
+# 10) Visual: Robust WTP boxplots by segment
+wtp_long_usage <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  select(usage_segment, wtp_adfree_vs_with, wtp_4k_vs_hd, wtp_4screens_vs_1, wtp_excl_vs_lic) %>%
+  pivot_longer(-usage_segment, names_to = "metric", values_to = "wtp")
+
+ggplot(wtp_long_usage, aes(x = usage_segment, y = wtp)) +
+  geom_boxplot() +
+  facet_wrap(~ metric, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "Heavy vs Light Users: Robust WTP for Premium Upgrades (winsorized, HB-derived)",
+    x = NULL, y = "WTP (€)"
+  )
+
+```
+* None of the WTP differences are statistically significant at conventional thresholds. The strongest (still non-significant) signal is for 4 screens (p≈0.16), suggesting possible higher willingness among heavy users, but evidence is not strong enough to claim a clear segment-level WTP gap.
+
+* thus Heavy users place more weight on stream count and ad structure when choosing a plan, indicating that high-usage viewers behave more like “households” optimizing across multiple viewing contexts.
+
+* Heavy users are slightly less price sensitive on average (less negative price utility), hinting that upsell pathways may be more viable for high-usage customers.
+
+* The strongest upgrade signal across usage groups is related to plan mechanics (ad-free + multi-screen), while 4K and exclusive content show weaker and less consistent incremental value in this dataset.
+
+```{r}
+# HEAVY vs LIGHT: Tables + Readable Annotated Visualisations
+# Requires: hb_ind with imp_* and winsorized wtp_* already computed
+
+# A) IMPORTANCE TABLE (Heavy vs Light) + gaps
+
+imp_sum <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  select(usage_segment, imp_ads, imp_quality, imp_streams, imp_content, imp_price) %>%
+  pivot_longer(-usage_segment, names_to = "metric", values_to = "value") %>%
+  group_by(usage_segment, metric) %>%
+  summarise(
+    mean = mean(value, na.rm = TRUE),
+    se   = sd(value, na.rm = TRUE) / sqrt(sum(!is.na(value))),
+    lo   = mean - 1.96 * se,
+    hi   = mean + 1.96 * se,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    metric = recode(metric,
+      imp_ads     = "Ads importance",
+      imp_quality = "Quality importance",
+      imp_streams = "Streams importance",
+      imp_content = "Content importance",
+      imp_price   = "Price importance"
+    )
+  )
+
+# This is the "gap table" like your screenshot
+imp_gap_tbl <- imp_sum %>%
+  select(usage_segment, metric, mean) %>%
+  pivot_wider(names_from = usage_segment, values_from = mean) %>%
+  mutate(gap = Heavy - Light) %>%
+  arrange(desc(gap))
+
+imp_gap_tbl
+
+# Pull streams gap for annotation
+streams_heavy <- imp_gap_tbl %>% filter(metric == "Streams importance") %>% pull(Heavy)
+streams_light <- imp_gap_tbl %>% filter(metric == "Streams importance") %>% pull(Light)
+streams_gap <- round(streams_heavy - streams_light, 2)
+
+# B) ROBUST WTP TABLE (Median + IQR) like your screenshot
+
+wtp_sum <- hb_ind %>%
+  filter(!is.na(usage_segment)) %>%
+  select(usage_segment, wtp_adfree_vs_with, wtp_4k_vs_hd, wtp_4screens_vs_1, wtp_excl_vs_lic) %>%
+  pivot_longer(-usage_segment, names_to = "metric", values_to = "wtp") %>%
+  group_by(usage_segment, metric) %>%
+  summarise(
+    med = median(wtp, na.rm = TRUE),
+    q1  = quantile(wtp, 0.25, na.rm = TRUE),
+    q3  = quantile(wtp, 0.75, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    metric = recode(metric,
+      wtp_4screens_vs_1  = "WTP: 4 screens vs 1",
+      wtp_4k_vs_hd       = "WTP: 4K vs HD",
+      wtp_adfree_vs_with = "WTP: Ad-free vs Ads",
+      wtp_excl_vs_lic    = "WTP: Exclusive vs Licensed"
+    )
+  ) %>%
+  arrange(metric, usage_segment)
+
+wtp_sum
+
+# C) IMPORTANCE PLOT 
+p_imp_clean <- ggplot(imp_sum, aes(x = metric, y = mean, group = usage_segment)) +
+  geom_line(alpha = 0.35) +
+  geom_point(aes(color = usage_segment), size = 2.6) +
+  geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.12, alpha = 0.7) +
+  coord_flip(clip = "off") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    plot.margin = margin(10, 70, 10, 10)
+  ) +
+  labs(
+    title = "Heavy vs Light Users: Attribute Importance (HB-derived)",
+    subtitle = "Points = mean importance; bars = approx. 95% CI",
+    x = NULL, y = "Importance (range-based)",
+    color = "Usage segment"
+  )
+
+# place label in right margin-ish area (stable)
+y_anchor_imp <- max(imp_sum$hi, na.rm = TRUE) * 0.92
+
+p_imp_clean +
+  annotate(
+    "label",
+    x = "Streams importance", y = y_anchor_imp,
+    label = paste0("Key insight:\nHeavy users weigh streams more\n(Δ ≈ ", streams_gap, ")"),
+    hjust = 0, vjust = 1,
+    size = 4,
+    label.size = 0.25,
+    fill = "white",
+    alpha = 0.92
+  ) +
+  geom_segment(
+    aes(x = "Streams importance", xend = "Streams importance",
+        y = y_anchor_imp - 0.15, yend = streams_heavy),
+    arrow = arrow(length = unit(0.15, "inches")),
+    inherit.aes = FALSE
+  )
+
+# D) ROBUST WTP PLOT
+
+p_wtp_clean <- ggplot(wtp_sum, aes(x = metric, y = med, group = usage_segment)) +
+  geom_line(alpha = 0.35) +
+  geom_point(aes(color = usage_segment), size = 2.6) +
+  geom_errorbar(aes(ymin = q1, ymax = q3), width = 0.12, alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.7) +
+  coord_flip(clip = "off") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    plot.margin = margin(10, 70, 10, 10)
+  ) +
+  labs(
+    title = "Heavy vs Light Users: Robust WTP (winsorized)",
+    subtitle = "Points = median WTP (€); bars = IQR (25–75%). Segment differences not significant (Wilcoxon p > 0.05).",
+    x = NULL, y = "WTP (€)",
+    color = "Usage segment"
+  )
+
+# annotate the highest median WTP row (usually Ad-free)
+top_row <- wtp_sum %>%
+  group_by(metric) %>%
+  summarise(m = max(med, na.rm = TRUE), .groups="drop") %>%
+  arrange(desc(m)) %>%
+  slice(1) %>%
+  pull(metric)
+
+y_anchor_wtp <- max(wtp_sum$med, na.rm = TRUE) * 0.92
+
+p_wtp_clean +
+  annotate(
+    "label",
+    x = top_row, y = y_anchor_wtp,
+    label = "Highest median WTP:\nAd-free upgrade",
+    hjust = 0, vjust = 1,
+    size = 4,
+    label.size = 0.25,
+    fill = "white",
+    alpha = 0.92
+  )
+
+```
+
+## Age-Based Segments
+```{r}
+# 7.4 Age-Based Segments: Tables + Tests + Annotated Visuals
+# Age groups: 18–24 / 25–34 / 35+
+# Requires: hb_ind with imp_* and winsorized wtp_* already computed
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+
+# 1) Create age groups
+
+hb_age <- hb_ind %>%
+  mutate(
+    age_group = case_when(
+      is.na(age) ~ NA_character_,
+      age >= 18 & age <= 24 ~ "18-24",
+      age >= 25 & age <= 34 ~ "25-34",
+      age >= 35 ~ "35+",
+      TRUE ~ NA_character_
+    )
+  )
+
+table(hb_age$age_group, useNA = "ifany")
+
+# Optional: enforce order in plots/tables
+hb_age <- hb_age %>%
+  mutate(age_group = factor(age_group, levels = c("18-24", "25-34", "35+")))
+
+
+# 2) Importance summary (means + approx 95% CI)
+
+imp_age_sum <- hb_age %>%
+  filter(!is.na(age_group)) %>%
+  select(age_group, imp_ads, imp_quality, imp_streams, imp_content, imp_price) %>%
+  pivot_longer(-age_group, names_to = "metric", values_to = "value") %>%
+  group_by(age_group, metric) %>%
+  summarise(
+    mean = mean(value, na.rm = TRUE),
+    se   = sd(value, na.rm = TRUE) / sqrt(sum(!is.na(value))),
+    lo   = mean - 1.96 * se,
+    hi   = mean + 1.96 * se,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    metric = recode(metric,
+      imp_ads     = "Ads importance",
+      imp_quality = "Quality importance",
+      imp_streams = "Streams importance",
+      imp_content = "Content importance",
+      imp_price   = "Price importance"
+    )
+  )
+
+# "Gap-style" table: show group means by metric (wide)
+imp_age_tbl <- imp_age_sum %>%
+  select(age_group, metric, mean) %>%
+  pivot_wider(names_from = age_group, values_from = mean) %>%
+  mutate(
+    gap_young_vs_mid   = `18-24` - `25-34`,
+    gap_young_vs_mature= `18-24` - `35+`,
+    gap_mid_vs_mature  = `25-34` - `35+`
+  ) %>%
+  arrange(desc(abs(gap_young_vs_mature)))
+
+imp_age_tbl
+
+# Identify which metric shows the largest young vs mature gap (for annotation)
+key_metric <- imp_age_tbl %>% slice(1) %>% pull(metric)
+key_gap <- imp_age_tbl %>% slice(1) %>% pull(gap_young_vs_mature)
+key_gap <- round(key_gap, 2)
+
+
+# 3) Robust WTP summary (medians + IQR)
+
+wtp_age_sum <- hb_age %>%
+  filter(!is.na(age_group)) %>%
+  select(age_group, wtp_adfree_vs_with, wtp_4k_vs_hd, wtp_4screens_vs_1, wtp_excl_vs_lic) %>%
+  pivot_longer(-age_group, names_to = "metric", values_to = "wtp") %>%
+  group_by(age_group, metric) %>%
+  summarise(
+    med = median(wtp, na.rm = TRUE),
+    q1  = quantile(wtp, 0.25, na.rm = TRUE),
+    q3  = quantile(wtp, 0.75, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    metric = recode(metric,
+      wtp_4screens_vs_1  = "WTP: 4 screens vs 1",
+      wtp_4k_vs_hd       = "WTP: 4K vs HD",
+      wtp_adfree_vs_with = "WTP: Ad-free vs Ads",
+      wtp_excl_vs_lic    = "WTP: Exclusive vs Licensed"
+    )
+  ) %>%
+  arrange(metric, age_group)
+
+wtp_age_sum
+
+
+# 4) Tests: Kruskal (overall) + pairwise Wilcoxon (only interpret if overall is sig)
+
+# Importance
+kr_imp_ads     <- kruskal.test(imp_ads ~ age_group, data = hb_age)
+kr_imp_quality <- kruskal.test(imp_quality ~ age_group, data = hb_age)
+kr_imp_streams <- kruskal.test(imp_streams ~ age_group, data = hb_age)
+kr_imp_content <- kruskal.test(imp_content ~ age_group, data = hb_age)
+kr_imp_price   <- kruskal.test(imp_price ~ age_group, data = hb_age)
+
+kr_imp_ads; kr_imp_quality; kr_imp_streams; kr_imp_content; kr_imp_price
+
+# Robust WTP
+kr_wtp_adfree   <- kruskal.test(wtp_adfree_vs_with ~ age_group, data = hb_age)
+kr_wtp_4k       <- kruskal.test(wtp_4k_vs_hd ~ age_group, data = hb_age)
+kr_wtp_4screens <- kruskal.test(wtp_4screens_vs_1 ~ age_group, data = hb_age)
+kr_wtp_excl     <- kruskal.test(wtp_excl_vs_lic ~ age_group, data = hb_age)
+
+kr_wtp_adfree; kr_wtp_4k; kr_wtp_4screens; kr_wtp_excl
+
+# Pairwise follow-ups (BH adjust). Use these only where Kruskal p < 0.05.
+pairwise.wilcox.test(hb_age$imp_ads, hb_age$age_group, p.adjust.method = "BH")
+pairwise.wilcox.test(hb_age$imp_streams, hb_age$age_group, p.adjust.method = "BH")
+pairwise.wilcox.test(hb_age$wtp_adfree_vs_with, hb_age$age_group, p.adjust.method = "BH")
+pairwise.wilcox.test(hb_age$wtp_4screens_vs_1, hb_age$age_group, p.adjust.method = "BH")
+
+
+# 5) Visual: Importance by age group (mean + 95% CI) + clean annotation
+
+p_imp_age <- ggplot(imp_age_sum, aes(x = metric, y = mean, group = age_group)) +
+  geom_line(alpha = 0.35) +
+  geom_point(aes(color = age_group), size = 2.6) +
+  geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.12, alpha = 0.7) +
+  coord_flip(clip = "off") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    plot.margin = margin(10, 80, 10, 10)
+  ) +
+  labs(
+    title = "Age Segments: Attribute Importance (HB-derived)",
+    subtitle = "Points = mean importance; bars = approx. 95% CI",
+    x = NULL, y = "Importance (range-based)",
+    color = "Age group"
+  )
+
+y_anchor_age_imp <- max(imp_age_sum$hi, na.rm = TRUE) * 0.92
+
+p_imp_age +
+  annotate(
+    "label",
+    x = key_metric, y = y_anchor_age_imp,
+    label = paste0("Largest 18–24 vs 35+ gap:\n", key_metric, "\n(Δ ≈ ", key_gap, ")"),
+    hjust = 0, vjust = 1,
+    size = 4,
+    label.size = 0.25,
+    fill = "white",
+    alpha = 0.92
+  )
+
+
+# 6) Visual: Robust WTP by age group (median + IQR) + note in subtitle
+
+p_wtp_age <- ggplot(wtp_age_sum, aes(x = metric, y = med, group = age_group)) +
+  geom_line(alpha = 0.35) +
+  geom_point(aes(color = age_group), size = 2.6) +
+  geom_errorbar(aes(ymin = q1, ymax = q3), width = 0.12, alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.7) +
+  coord_flip(clip = "off") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    plot.margin = margin(10, 80, 10, 10)
+  ) +
+  labs(
+    title = "Age Segments: Robust WTP (winsorized, HB-derived)",
+    subtitle = "Points = median WTP (€); bars = IQR (25–75%). Interpret with Kruskal/Wilcoxon tests.",
+    x = NULL, y = "WTP (€)",
+    color = "Age group"
+  )
+
+# annotate highest median WTP row across age groups
+top_wtp_row <- wtp_age_sum %>%
+  group_by(metric) %>%
+  summarise(m = max(med, na.rm = TRUE), .groups="drop") %>%
+  arrange(desc(m)) %>%
+  slice(1) %>%
+  pull(metric)
+
+y_anchor_age_wtp <- max(wtp_age_sum$med, na.rm = TRUE) * 0.92
+
+p_wtp_age +
+  annotate(
+    "label",
+    x = top_wtp_row, y = y_anchor_age_wtp,
+    label = "Highest median WTP feature\n(across age groups)",
+    hjust = 0, vjust = 1,
+    size = 4,
+    label.size = 0.25,
+    fill = "white",
+    alpha = 0.92
+  )
+
+```
+Age does not meaningfully change what attributes drive choice in this sample. Preference structure is broadly consistent across age groups.
+
+That’s valuable because it means:
+you don’t need entirely different messaging by age, segmentation by age won’t improve targeting much on importance.
+
+There is a directional pattern where younger respondents place somewhat more weight on content, while the 25–34 group appears more plan-structure sensitive (price/ads). However, these differences are not statistically significant.
+
+Age segments differ significantly in WTP for multi-screen access.
+Where age does matter: Willingness-to-pay for multi-screen access differs significantly by age (Kruskal p = 0.0166). Pairwise tests show the gap is driven by 18–24 vs 25–34 (BH-adjusted p = 0.013).
+
+Managerial implication: Multi-screen upgrades should be targeted and messaged more aggressively to 18–24 users (strongest median WTP ≈ €5.33), while for 25–34, multi-screen is unlikely to be a primary upsell lever (median ≈ €0.88).
+
+# Discussion
+one statistically significant, clean lever:
+
+WTP for 4 screens vs 1 differs by age (Kruskal p = 0.0166)
+
+And it’s driven by a specific pair: 18–24 vs 25–34 (BH-adjusted p = 0.013)
+
+That’s directly actionable: who to target with a household/plan-sharing upsell, and who not to.
+
+This is the kind of result you can confidently state as:
+
+“Multi-screen upsell works best for 18–24; it is weak for 25–34.”
+
+
+Heavy vs light gives you a strong descriptive preference story:
+
+Heavy users show higher importance for streams and ads
+
+Heavy are slightly less price sensitive (price beta less negative)
+
+But your WTP differences are not significant (Wilcoxon p-values high), and heavy group is small (n=17), so it’s harder to make “hard” claims.
