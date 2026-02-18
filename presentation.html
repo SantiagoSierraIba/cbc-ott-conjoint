@@ -27,7 +27,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
 .nav-arrow:hover { background:rgba(229,9,20,0.7); }
 .nav-arrow.left { left:16px; }
 .nav-arrow.right { right:16px; }
-.slide-counter { position:fixed; bottom:24px; right:32px; font-size:15px; color:#666; z-index:100; font-family:'Inter',sans-serif; }
+.slide-counter { position:fixed; bottom:24px; right:32px; font-size:17px; color:#666; z-index:100; font-family:'Inter',sans-serif; }
 
 /* ===== SLIDE 0: LOGIN ===== */
 #slide-0 { background: linear-gradient(180deg, #000 0%, #141414 50%, #000 100%); justify-content:center; }
@@ -37,7 +37,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
 .login-btn { background:#E50914; color:#fff; border:none; padding:16px 48px; font-size:20px; font-family:'Inter',sans-serif; font-weight:600; border-radius:4px; cursor:pointer; transition:all 0.3s; display:flex; align-items:center; gap:12px; letter-spacing:1px; }
 .login-btn:hover { background:#f40612; transform:scale(1.05); box-shadow:0 0 30px rgba(229,9,20,0.5); }
 .login-btn svg { width:24px; height:24px; fill:#fff; }
-.login-footer { position:absolute; bottom:40px; color:#555; font-size:15px; }
+.login-footer { position:absolute; bottom:40px; color:#555; font-size:17px; }
 
 /* ===== SLIDE 1: PROFILES ===== */
 #slide-1 { background:#141414; }
@@ -53,24 +53,25 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
 .profiles-group { margin-top:24px; color:#555; font-size:16px; letter-spacing:1px; }
 
 /* ===== CONTENT SLIDES ===== */
-.section-header { font-family:'Bebas Neue',sans-serif; font-size:clamp(16px,1.6vw,22px); color:#E50914; letter-spacing:3px; margin-bottom:8px; text-transform:uppercase; }
-.slide-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(32px,4.5vw,64px); letter-spacing:2px; line-height:1.1; margin-bottom:24px; }
-.slide-text { font-size:clamp(16px,1.5vw,21px); color:#B3B3B3; line-height:1.6; max-width:900px; text-align:center; }
+.section-header { font-family:'Bebas Neue',sans-serif; font-size:clamp(18px,1.8vw,24px); color:#E50914; letter-spacing:3px; margin-bottom:8px; text-transform:uppercase; }
+.slide-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(36px,5vw,68px); letter-spacing:2px; line-height:1.1; margin-bottom:24px; }
+.slide-text { font-size:clamp(18px,1.7vw,23px); color:#B3B3B3; line-height:1.6; max-width:900px; text-align:center; }
 .slide-text strong { color:#fff; }
 
 /* Cards */
 .card-grid { display:grid; gap:20px; width:100%; max-width:1100px; }
 .card { background:#1a1a1a; border-radius:8px; padding:24px; border-left:4px solid #E50914; transition:transform 0.3s, box-shadow 0.3s; }
 .card:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.4); }
-.card-title { font-family:'Bebas Neue',sans-serif; font-size:23px; letter-spacing:1px; margin-bottom:8px; color:#E50914; }
-.card-body { font-size:17px; color:#B3B3B3; line-height:1.5; }
+.card-title { font-family:'Bebas Neue',sans-serif; font-size:25px; letter-spacing:1px; margin-bottom:8px; color:#E50914; }
+.card-body { font-size:19px; color:#B3B3B3; line-height:1.5; }
 
 /* KPI */
 .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; max-width:900px; width:100%; }
 .kpi-card { background:linear-gradient(135deg,#1a1a1a 0%,#222 100%); border-radius:12px; padding:32px 24px; text-align:center; border-top:4px solid #E50914; }
 .kpi-value { font-family:'Bebas Neue',sans-serif; font-size:clamp(40px,5vw,64px); color:#E50914; line-height:1; }
-.kpi-label { font-size:16px; color:#808080; margin-top:8px; letter-spacing:1px; text-transform:uppercase; }
+.kpi-label { font-size:18px; color:#808080; margin-top:8px; letter-spacing:1px; text-transform:uppercase; }
 .kpi-benchmark { font-size:16px; color:#555; margin-top:4px; }
+
 
 /* Chart containers */
 .chart-container { width:100%; max-width:1000px; position:relative; }
@@ -78,62 +79,62 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
 
 /* Attribute table */
 .attr-table { border-collapse:collapse; width:100%; max-width:1000px; }
-.attr-table th { background:#E50914; color:#fff; padding:12px 16px; text-align:left; font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:1px; }
-.attr-table td { padding:10px 16px; border-bottom:1px solid #333; font-size:16px; color:#ccc; }
+.attr-table th { background:#E50914; color:#fff; padding:12px 16px; text-align:left; font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:1px; }
+.attr-table td { padding:10px 16px; border-bottom:1px solid #333; font-size:18px; color:#ccc; }
 .attr-table tr:hover td { background:#1e1e1e; }
-.attr-table .attr-name { color:#E50914; font-weight:600; font-size:17px; }
+.attr-table .attr-name { color:#E50914; font-weight:600; font-size:19px; }
 
 /* Choice task mock */
 .choice-task { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; width:100%; max-width:1000px; }
 .choice-option { background:#1a1a1a; border-radius:8px; padding:20px 16px; text-align:center; border:2px solid #333; transition:all 0.3s; }
 .choice-option:hover { border-color:#E50914; transform:translateY(-4px); }
 .choice-option.none-opt { border-style:dashed; }
-.choice-option h3 { font-family:'Bebas Neue',sans-serif; font-size:24px; margin-bottom:12px; color:#E50914; }
-.choice-option .attr-val { font-size:15px; color:#B3B3B3; padding:6px 0; border-bottom:1px solid #2a2a2a; }
-.choice-option .price-tag { font-size:26px; font-weight:700; color:#fff; margin-top:12px; }
-.choice-btn { margin-top:12px; background:#333; color:#fff; border:none; padding:8px 20px; border-radius:4px; font-size:15px; cursor:default; }
+.choice-option h3 { font-family:'Bebas Neue',sans-serif; font-size:26px; margin-bottom:12px; color:#E50914; }
+.choice-option .attr-val { font-size:17px; color:#B3B3B3; padding:6px 0; border-bottom:1px solid #2a2a2a; }
+.choice-option .price-tag { font-size:28px; font-weight:700; color:#fff; margin-top:12px; }
+.choice-btn { margin-top:12px; background:#333; color:#fff; border:none; padding:8px 20px; border-radius:4px; font-size:17px; cursor:default; }
 
 /* Simulation products */
 .sim-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; width:100%; max-width:1100px; }
 .sim-card { background:#1a1a1a; border-radius:8px; padding:20px; text-align:center; border-top:3px solid #E50914; position:relative; }
-.sim-card .sim-name { font-family:'Bebas Neue',sans-serif; font-size:20px; margin-bottom:4px; }
-.sim-card .sim-share { font-family:'Bebas Neue',sans-serif; font-size:40px; color:#E50914; }
+.sim-card .sim-name { font-family:'Bebas Neue',sans-serif; font-size:22px; margin-bottom:4px; }
+.sim-card .sim-share { font-family:'Bebas Neue',sans-serif; font-size:44px; color:#E50914; }
 .sim-card .sim-details { font-size:16px; color:#808080; margin-top:8px; line-height:1.5; }
 .sim-card.winner { border-color:#46D369; }
 .sim-card.winner .sim-share { color:#46D369; }
-.sim-badge { position:absolute; top:-12px; right:12px; background:#46D369; color:#000; font-size:15px; font-weight:700; padding:3px 10px; border-radius:12px; }
+.sim-badge { position:absolute; top:-12px; right:12px; background:#46D369; color:#000; font-size:17px; font-weight:700; padding:3px 10px; border-radius:12px; }
 
 /* Scenario comparison */
 .scenario-row { display:grid; grid-template-columns:1fr 60px 1fr; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #2a2a2a; max-width:700px; width:100%; }
-.scenario-name { font-size:17px; color:#ccc; text-align:right; }
-.scenario-arrow { text-align:center; color:#E50914; font-size:20px; }
-.scenario-vals { display:flex; gap:16px; font-size:17px; }
+.scenario-name { font-size:19px; color:#ccc; text-align:right; }
+.scenario-arrow { text-align:center; color:#E50914; font-size:22px; }
+.scenario-vals { display:flex; gap:16px; font-size:19px; }
 .scenario-old { color:#666; text-decoration:line-through; }
 .scenario-new { color:#46D369; font-weight:600; }
-.scenario-delta { color:#E50914; font-size:15px; }
+.scenario-delta { color:#E50914; font-size:17px; }
 
 /* Insight cards */
 .insight-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; max-width:1000px; width:100%; }
 .insight-card { background:linear-gradient(135deg,#1a1a1a,#222); border-radius:12px; padding:28px; border-left:4px solid #E50914; }
 .insight-card .num { font-family:'Bebas Neue',sans-serif; font-size:52px; color:#E50914; line-height:1; float:left; margin-right:16px; }
-.insight-card h3 { font-size:18px; font-weight:600; color:#fff; margin-bottom:6px; }
-.insight-card p { font-size:15px; color:#999; line-height:1.5; }
+.insight-card h3 { font-size:20px; font-weight:600; color:#fff; margin-bottom:6px; }
+.insight-card p { font-size:17px; color:#999; line-height:1.5; }
 
 /* Credits */
 .credits-container { text-align:center; }
 .credits-names { display:flex; flex-wrap:wrap; justify-content:center; gap:32px; margin:32px 0; }
 .credit-person { text-align:center; }
 .credit-person .credit-avatar { width:72px; height:72px; border-radius:50%; margin:0 auto 10px; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:24px; }
-.credit-person .credit-name { font-size:17px; color:#ccc; }
-.credits-course { color:#666; font-size:16px; margin-top:32px; line-height:1.8; }
+.credit-person .credit-name { font-size:19px; color:#ccc; }
+.credits-course { color:#666; font-size:18px; margin-top:32px; line-height:1.8; }
 .credits-watching { font-family:'Bebas Neue',sans-serif; font-size:clamp(24px,3vw,40px); color:#E50914; letter-spacing:2px; margin-top:40px; }
 
 /* Limitations */
 .lim-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; max-width:900px; width:100%; }
 .lim-card { background:#1a1a1a; border-radius:8px; padding:24px; text-align:center; }
 .lim-card .lim-icon { font-size:36px; margin-bottom:12px; }
-.lim-card h3 { font-size:15px; font-weight:600; margin-bottom:6px; color:#ccc; }
-.lim-card p { font-size:15px; color:#808080; line-height:1.5; }
+.lim-card h3 { font-size:17px; font-weight:600; margin-bottom:6px; color:#ccc; }
+.lim-card p { font-size:17px; color:#808080; line-height:1.5; }
 
 /* Fade-in animation for elements */
 .fade-up { opacity:0; transform:translateY(30px); transition:opacity 0.6s ease, transform 0.6s ease; }
@@ -148,8 +149,8 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
 /* Demo stats row */
 .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; max-width:1000px; width:100%; margin-bottom:20px; }
 .stat-box { background:#1a1a1a; border-radius:8px; padding:16px; text-align:center; }
-.stat-box .stat-num { font-family:'Bebas Neue',sans-serif; font-size:40px; color:#E50914; }
-.stat-box .stat-label { font-size:16px; color:#808080; text-transform:uppercase; letter-spacing:1px; }
+.stat-box .stat-num { font-family:'Bebas Neue',sans-serif; font-size:44px; color:#E50914; }
+.stat-box .stat-label { font-size:18px; color:#808080; text-transform:uppercase; letter-spacing:1px; }
 
 /* Two column layout */
 .two-col { display:grid; grid-template-columns:1fr 1fr; gap:32px; width:100%; max-width:1100px; align-items:start; }
@@ -283,7 +284,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
     </div>
     <div class="choice-option none-opt">
       <h3 style="color:#808080;">None</h3>
-      <div style="color:#666; font-size:16px; margin-top:24px;">I would not subscribe to any of these options</div>
+      <div style="color:#666; font-size:18px; margin-top:24px;">I would not subscribe to any of these options</div>
       <button class="choice-btn" style="margin-top:40px;">Select</button>
     </div>
   </div>
@@ -327,8 +328,8 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
       <div style="background:#1a1a1a; border-radius:8px; padding:16px; margin-bottom:20px; display:flex; align-items:center; gap:16px;">
         <canvas id="chart-gender" width="120" height="120" style="max-width:120px; max-height:120px;"></canvas>
         <div>
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;"><span style="width:12px;height:12px;border-radius:50%;background:#E50914;display:inline-block;"></span><span style="color:#ccc; font-size:16px;">Male: 52 (51%)</span></div>
-          <div style="display:flex; align-items:center; gap:8px;"><span style="width:12px;height:12px;border-radius:50%;background:#E87C03;display:inline-block;"></span><span style="color:#ccc; font-size:16px;">Female: 49 (49%)</span></div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;"><span style="width:12px;height:12px;border-radius:50%;background:#E50914;display:inline-block;"></span><span style="color:#ccc; font-size:18px;">Male: 52 (51%)</span></div>
+          <div style="display:flex; align-items:center; gap:8px;"><span style="width:12px;height:12px;border-radius:50%;background:#E87C03;display:inline-block;"></span><span style="color:#ccc; font-size:18px;">Female: 49 (49%)</span></div>
         </div>
       </div>
       <div class="stats-row" style="grid-template-columns:1fr 1fr; margin-bottom:20px;">
@@ -336,7 +337,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
         <div class="stat-box"><div class="stat-num">19–69</div><div class="stat-label">Age Range</div></div>
       </div>
       <div style="background:#1a1a1a; border-radius:8px; padding:20px;">
-        <div style="font-size:15px; color:#808080; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Education</div>
+        <div style="font-size:17px; color:#808080; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Education</div>
         <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
           <span style="color:#ccc;">Bachelor's</span><span style="color:#E50914; font-weight:600;">51 (50%)</span>
         </div>
@@ -365,7 +366,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
     </div>
     <div>
       <div style="background:#1a1a1a; border-radius:8px; padding:24px; margin-bottom:20px;">
-        <div style="font-size:15px; color:#808080; margin-bottom:16px; text-transform:uppercase; letter-spacing:1px;">Subscription Type</div>
+        <div style="font-size:17px; color:#808080; margin-bottom:16px; text-transform:uppercase; letter-spacing:1px;">Subscription Type</div>
         <div style="margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="color:#ccc;">Family/Friend Account</span><span style="font-weight:600;">47 (47%)</span></div>
           <div style="background:#333; border-radius:4px; height:8px;"><div style="background:#E50914; border-radius:4px; height:8px; width:47%;"></div></div>
@@ -380,12 +381,12 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
         </div>
       </div>
       <div style="background:#1a1a1a; border-radius:8px; padding:20px;">
-        <div style="font-size:15px; color:#808080; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Choice Behavior</div>
+        <div style="font-size:17px; color:#808080; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Choice Behavior</div>
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <span style="color:#ccc;">None (Opt-out) Rate</span>
           <span style="font-family:'Bebas Neue',sans-serif; font-size:32px; color:#E50914;">18.4%</span>
         </div>
-        <div style="font-size:16px; color:#666; margin-top:4px;">Indicating moderate willingness to subscribe</div>
+        <div style="font-size:18px; color:#666; margin-top:4px;">Indicating moderate willingness to subscribe</div>
       </div>
     </div>
   </div>
@@ -416,7 +417,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
     </div>
   </div>
   <div class="fade-up" style="margin-top:28px; display:flex; gap:32px; align-items:center; justify-content:center;">
-    <div style="font-size:16px; color:#808080; max-width:500px;">
+    <div style="font-size:18px; color:#808080; max-width:500px;">
       Model correctly predicts the chosen alternative <strong style="color:#fff;">59.4%</strong> of the time, <strong style="color:#46D369;">2.4&times; better than random guessing</strong>.
     </div>
   </div>
@@ -434,10 +435,10 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
   <div class="fade-up" style="margin-top:20px; max-width:800px; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
     <div class="card" style="padding:16px;">
-      <div class="card-body" style="font-size:15px;"><strong style="color:#E50914;">Price &amp; Ads dominate</strong>, together accounting for over 53% of choice variation. Consumers primarily trade off cost vs. ad-free experience.</div>
+      <div class="card-body" style="font-size:17px;"><strong style="color:#E50914;">Price &amp; Ads dominate</strong>, together accounting for over 53% of choice variation. Consumers primarily trade off cost vs. ad-free experience.</div>
     </div>
     <div class="card" style="padding:16px;">
-      <div class="card-body" style="font-size:15px;"><strong style="color:#E50914;">High heterogeneity</strong>: large SDs indicate that not all consumers value the same things. HB captures this individual variation.</div>
+      <div class="card-body" style="font-size:17px;"><strong style="color:#E50914;">High heterogeneity</strong>: large SDs indicate that not all consumers value the same things. HB captures this individual variation.</div>
     </div>
   </div>
 </div>
@@ -493,11 +494,11 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
         <div style="display:flex; gap:16px; margin-top:8px;">
           <div style="text-align:center; flex:1; background:#1a1a1a; border-radius:8px; padding:12px;">
             <div style="font-family:'Bebas Neue',sans-serif; font-size:28px; color:#46D369;">&euro;5.33</div>
-            <div style="font-size:16px; color:#808080;">Median WTP<br>18&ndash;24</div>
+            <div style="font-size:18px; color:#808080;">Median WTP<br>18&ndash;24</div>
           </div>
           <div style="text-align:center; flex:1; background:#1a1a1a; border-radius:8px; padding:12px;">
             <div style="font-family:'Bebas Neue',sans-serif; font-size:28px; color:#E87C03;">&euro;0.88</div>
-            <div style="font-size:16px; color:#808080;">Median WTP<br>25&ndash;34</div>
+            <div style="font-size:18px; color:#808080;">Median WTP<br>25&ndash;34</div>
           </div>
         </div>
       </div>
@@ -505,7 +506,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
   <div class="fade-up" style="margin-top:20px; max-width:950px;">
     <div class="card" style="padding:16px;">
-      <div class="card-body" style="font-size:15px;"><strong style="color:#E50914;">Managerial implication:</strong> Household and plan-sharing upsells should be targeted at 18&ndash;24 users, where WTP for multi-screen is highest. For 25&ndash;34, multi-screen is unlikely to be a primary upsell lever.</div>
+      <div class="card-body" style="font-size:17px;"><strong style="color:#E50914;">Managerial implication:</strong> Household and plan-sharing upsells should be targeted at 18&ndash;24 users, where WTP for multi-screen is highest. For 25&ndash;34, multi-screen is unlikely to be a primary upsell lever.</div>
     </div>
   </div>
 </div>
@@ -517,39 +518,39 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   <div class="sim-grid fade-up">
     <div class="sim-card">
       <div class="sim-name">Budget Basic</div>
-      <div style="font-size:15px; color:#808080;">&euro;4.99 &bull; With Ads &bull; HD &bull; 1 screen &bull; Licensed</div>
+      <div style="font-size:17px; color:#808080;">&euro;4.99 &bull; With Ads &bull; HD &bull; 1 screen &bull; Licensed</div>
       <div class="sim-share">8.1%</div>
     </div>
     <div class="sim-card">
       <div class="sim-name">Mid-Tier Standard</div>
-      <div style="font-size:15px; color:#808080;">&euro;9.99 &bull; Limited Ads &bull; Full HD &bull; 2 screens &bull; Orig & Lic</div>
+      <div style="font-size:17px; color:#808080;">&euro;9.99 &bull; Limited Ads &bull; Full HD &bull; 2 screens &bull; Orig & Lic</div>
       <div class="sim-share">13.9%</div>
     </div>
     <div class="sim-card">
       <div class="sim-name">Premium All-In</div>
-      <div style="font-size:15px; color:#808080;">&euro;14.99 &bull; Ad-free &bull; 4K &bull; 4 screens &bull; Exclusive</div>
+      <div style="font-size:17px; color:#808080;">&euro;14.99 &bull; Ad-free &bull; 4K &bull; 4 screens &bull; Exclusive</div>
       <div class="sim-share">16.8%</div>
     </div>
     <div class="sim-card">
       <div class="sim-name">Ad-Supported Value</div>
-      <div style="font-size:15px; color:#808080;">&euro;7.99 &bull; With Ads &bull; Full HD &bull; 2 screens &bull; Orig & Lic</div>
+      <div style="font-size:17px; color:#808080;">&euro;7.99 &bull; With Ads &bull; Full HD &bull; 2 screens &bull; Orig & Lic</div>
       <div class="sim-share">9.3%</div>
     </div>
     <div class="sim-card winner">
       <div class="sim-badge">WINNER</div>
       <div class="sim-name">Family Plan</div>
-      <div style="font-size:15px; color:#808080;">&euro;12.99 &bull; Ad-free &bull; Full HD &bull; 4 screens &bull; Orig & Lic</div>
+      <div style="font-size:17px; color:#808080;">&euro;12.99 &bull; Ad-free &bull; Full HD &bull; 4 screens &bull; Orig & Lic</div>
       <div class="sim-share">41.2%</div>
     </div>
     <div class="sim-card" style="border-top-color:#555;">
       <div class="sim-name" style="color:#808080;">None (Opt-out)</div>
-      <div style="font-size:15px; color:#555;">Consumer chooses not to subscribe</div>
+      <div style="font-size:17px; color:#555;">Consumer chooses not to subscribe</div>
       <div class="sim-share" style="color:#808080;">10.7%</div>
     </div>
   </div>
   <div class="fade-up" style="margin-top:16px; max-width:800px;">
     <div class="card" style="padding:16px;">
-      <div class="card-body" style="font-size:15px;">The <strong style="color:#46D369;">Family Plan dominates</strong> with 41.2% market share. Ad-free viewing with multi-screen access and broad content at a mid-high price point is the strongest value proposition.</div>
+      <div class="card-body" style="font-size:17px;">The <strong style="color:#46D369;">Family Plan dominates</strong> with 41.2% market share. Ad-free viewing with multi-screen access and broad content at a mid-high price point is the strongest value proposition.</div>
     </div>
   </div>
 </div>
@@ -563,10 +564,10 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
   <div class="fade-up" style="max-width:700px; width:100%;">
     <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:2px solid #444; margin-bottom:8px;">
-      <div style="font-size:16px; color:#808080; text-transform:uppercase; letter-spacing:1px;">Product</div>
-      <div style="font-size:16px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">Before</div>
-      <div style="font-size:16px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">After</div>
-      <div style="font-size:16px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">Change</div>
+      <div style="font-size:18px; color:#808080; text-transform:uppercase; letter-spacing:1px;">Product</div>
+      <div style="font-size:18px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">Before</div>
+      <div style="font-size:18px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">After</div>
+      <div style="font-size:18px; color:#808080; text-transform:uppercase; letter-spacing:1px; text-align:center;">Change</div>
     </div>
     <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:8px; padding:12px 0; border-bottom:1px solid #2a2a2a;">
       <div style="color:#ccc;">Budget Basic</div>
@@ -607,7 +608,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:#141414; color
   </div>
   <div class="fade-up" style="margin-top:20px; max-width:700px;">
     <div class="card" style="padding:16px;">
-      <div class="card-body" style="font-size:15px;"><strong style="color:#46D369;">Premium All-In doubles</strong> its share (16.8% &rarr; 33.8%), but <strong style="color:#E50914;">opt-out also doubles</strong> (10.7% &rarr; 23.7%). Without the Family Plan's ad-free multi-screen value, many consumers would rather not subscribe at all.</div>
+      <div class="card-body" style="font-size:17px;"><strong style="color:#46D369;">Premium All-In doubles</strong> its share (16.8% &rarr; 33.8%), but <strong style="color:#E50914;">opt-out also doubles</strong> (10.7% &rarr; 23.7%). Without the Family Plan's ad-free multi-screen value, many consumers would rather not subscribe at all.</div>
     </div>
   </div>
 </div>
